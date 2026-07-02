@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Home Life CRM</title>
+    <style>
+      :root {
+        --ink: #061a24;
+        --navy: #082c44;
+        --steel: #5c6e7c;
+        --line: #d9e2ea;
+        --mist: #f4f7f9;
+        --blue: #0a4b86;
+        --green: #14735b;
+        --amber: #b98a45;
+        --gold: #c7a269;
+        --ocean: #155c7c;
+        --pearl: #fbfcfa;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, Arial, Helvetica, sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at top left, rgba(108,155,210,.18), transparent 34rem), linear-gradient(180deg, var(--pearl), var(--mist));
+      }
+      .shell { display: flex; min-height: 100vh; }
+      aside {
+        width: 320px;
+        flex: 0 0 320px;
+        background: linear-gradient(145deg, #061a24 0%, #082c44 48%, #155c7c 100%);
+        color: white;
+        border-right: 1px solid rgba(255,255,255,.1);
+      }
+      .brand { padding: 24px; border-bottom: 1px solid rgba(255,255,255,.1); display: flex; gap: 12px; align-items: center; }
+      .logo { width: 44px; height: 44px; border-radius: 8px; background: white; padding: 6px; box-shadow: 0 14px 34px rgba(0,0,0,.22); object-fit: contain; }
+      .brand strong { display: block; font-size: 18px; }
+      .brand span { color: rgba(255,255,255,.62); font-size: 12px; }
+      nav { padding: 16px 12px 22px; display: grid; gap: 18px; }
+      .nav-group small { display: block; padding: 0 12px 8px; color: rgba(255,255,255,.42); font-weight: 700; text-transform: uppercase; font-size: 11px; }
+      .nav-group button { width: 100%; height: 36px; border: 0; border-radius: 6px; text-align: left; padding: 0 12px; background: transparent; color: rgba(255,255,255,.70); cursor: pointer; }
+      .nav-group button.active { background: white; color: var(--ink); font-weight: 700; box-shadow: 0 10px 26px rgba(0,0,0,.12); }
+      .note { margin: 0 16px 18px; padding: 14px; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; background: rgba(255,255,255,.05); color: rgba(255,255,255,.66); line-height: 1.45; font-size: 13px; }
+      main { flex: 1; min-width: 0; }
+      header { position: sticky; top: 0; z-index: 2; background: rgba(251,252,250,.95); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); padding: 18px 28px; display: flex; justify-content: space-between; gap: 18px; align-items: center; }
+      h1 { margin: 4px 0 0; font-size: 30px; letter-spacing: 0; }
+      .muted { color: var(--steel); font-size: 14px; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .search, .btn { height: 40px; border-radius: 6px; border: 1px solid var(--line); background: white; padding: 0 12px; display: flex; align-items: center; gap: 8px; color: var(--navy); font-weight: 600; }
+      .search input { border: 0; outline: 0; width: 220px; }
+      .btn.primary { background: var(--navy); color: white; border-color: var(--navy); box-shadow: 0 12px 26px rgba(8,44,68,.16); }
+      .content { padding: 24px 28px; display: grid; gap: 24px; }
+      .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+      .card { background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(251,252,250,.94)); border: 1px solid rgba(8,44,68,.10); border-radius: 8px; box-shadow: 0 20px 55px rgba(6,26,36,.10); overflow: hidden; }
+      .metric { padding: 16px; }
+      .metric small { text-transform: uppercase; color: var(--steel); font-weight: 700; font-size: 11px; }
+      .metric b { display: block; margin-top: 8px; font-size: 27px; }
+      .metric p { margin: 8px 0 0; color: var(--steel); font-size: 13px; }
+      .section-title { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; font-weight: 700; }
+      .icon { width: 34px; height: 34px; border-radius: 6px; background: linear-gradient(145deg, var(--navy), var(--ocean)); color: white; display: grid; place-items: center; font-size: 12px; }
+      .grid-two { display: grid; grid-template-columns: 1.2fr .8fr; gap: 24px; }
+      .grid-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th { text-align: left; padding: 12px 20px; background: var(--mist); color: var(--steel); font-size: 11px; text-transform: uppercase; }
+      td { padding: 14px 20px; border-top: 1px solid var(--line); vertical-align: middle; }
+      .table-wrap { overflow-x: auto; }
+      .pill { display: inline-block; border-radius: 6px; padding: 4px 8px; color: white; font-weight: 700; font-size: 12px; }
+      .good { background: var(--green); } .mid { background: var(--amber); } .cold { background: var(--steel); }
+      .list { padding: 20px; display: grid; gap: 12px; }
+      .box { border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+      .box p { margin: 4px 0 0; color: var(--steel); font-size: 13px; }
+      .progress { margin-top: 10px; height: 8px; border-radius: 999px; background: var(--mist); overflow: hidden; }
+      .progress span { display: block; height: 100%; background: linear-gradient(90deg, var(--navy), var(--ocean), var(--gold)); border-radius: 999px; }
+      .bars { padding: 20px; display: grid; gap: 12px; }
+      .bar-row { display: grid; grid-template-columns: 92px 1fr 42px; gap: 10px; align-items: center; font-size: 13px; color: var(--steel); }
+      .bar-track { height: 22px; background: var(--mist); border-radius: 4px; overflow: hidden; }
+      .bar-fill { height: 100%; background: linear-gradient(90deg, var(--navy), var(--ocean)); border-radius: 4px; }
+      .hero {
+        background: linear-gradient(135deg, rgba(255,255,255,.10), transparent 38%), linear-gradient(145deg, #061a24 0%, #082c44 48%, #155c7c 100%);
+        color: white;
+      }
+      .hero-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 24px; padding: 28px; }
+      .hero-login { border: 1px solid rgba(255,255,255,.14); border-radius: 8px; background: rgba(255,255,255,.10); padding: 20px; backdrop-filter: blur(12px); box-shadow: 0 24px 70px rgba(0,0,0,.18); }
+      .hero-login input { width: 100%; height: 42px; margin-top: 10px; border: 1px solid rgba(255,255,255,.22); border-radius: 6px; padding: 0 12px; color: var(--ink); outline: none; background: rgba(255,255,255,.96); }
+      .hero-login button { width: 100%; height: 42px; margin-top: 10px; border: 0; border-radius: 6px; background: var(--gold); color: var(--ink); font-weight: 800; }
+      .heat { padding: 20px; display: grid; grid-template-columns: 42px repeat(5, 1fr); gap: 8px; text-align: center; font-size: 12px; }
+      .heat span { min-height: 38px; border-radius: 6px; display: grid; place-items: center; font-weight: 700; color: white; background: var(--navy); }
+      .heat .head, .heat .day { color: var(--steel); background: transparent; }
+      @media (max-width: 1100px) {
+        aside { display: none; }
+        .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .grid-two, .grid-three, .hero-grid { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 680px) {
+        header { align-items: flex-start; flex-direction: column; padding: 16px; }
+        .content { padding: 16px; }
+        .metrics { grid-template-columns: 1fr; }
+        table { min-width: 760px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside>
+        <div class="brand"><img class="logo" src="home-life-logo.png" alt="Home Life" /><div><strong>Home Life CRM</strong><span>Negocios Imobiliarios</span></div></div>
+        <nav>
+          <div class="nav-group"><small>Geral</small><button class="active" data-area="executivo">Dashboard Executivo Geral</button></div>
+          <div class="nav-group">
+            <small>Area de Corretores</small>
+            <button data-area="corretores">Dashboard Corretores</button>
+            <button data-area="cadastro-corretores">Cadastro de Corretores</button>
+            <button data-area="corretores">Performance</button>
+            <button data-area="corretores">IPC Corretor</button>
+            <button data-area="corretores">Ranking</button>
+            <button data-area="corretores">Relatorios</button>
+            <button data-area="corretores">Historico Operacional</button>
+            <button data-area="corretores">Conversao</button>
+            <button data-area="corretores">Metas</button>
+            <button data-area="corretores">Analise Preditiva</button>
+          </div>
+          <div class="nav-group">
+            <small>Area de Clientes</small>
+            <button data-area="clientes">Dashboard Clientes</button>
+            <button data-area="cadastro-clientes">Cadastro de Clientes</button>
+            <button data-area="clientes">Leads</button>
+            <button data-area="clientes">Funil Comercial</button>
+            <button data-area="clientes">Pastas</button>
+            <button data-area="clientes">IPC Cliente</button>
+            <button data-area="clientes">Aprovacao Bancaria</button>
+            <button data-area="clientes">Perfil Financeiro</button>
+            <button data-area="clientes">Historico de Atendimento</button>
+            <button data-area="clientes">Relatorios de Conversao</button>
+            <button data-area="clientes">Inteligencia de Compra</button>
+          </div>
+        </nav>
+        <div class="note"><b style="color:white">CRM proprietario Home Life</b><br />corretor_id, cliente_id, pasta_id e venda_id seguem relacionados internamente.</div>
+      </aside>
+      <main>
+        <header>
+          <div><div class="muted" id="eyebrow">Visao geral conectando corretores, clientes, pastas e vendas</div><h1 id="title">Dashboard Executivo Geral</h1></div>
+          <div class="actions"><label class="search">Buscar <input placeholder="lead, pasta, corretor" /></label><button class="btn">Filtro</button><button class="btn primary" onclick="downloadCsv()">Excel</button><button class="btn" onclick="print()">PDF</button></div>
+        </header>
+        <section class="content" id="content"></section>
+      </main>
+    </div>
+    <script>
+      const executive = `
+        <div class="card hero"><div class="hero-grid">
+          <div>
+            <div style="display:flex;align-items:center;gap:14px">
+              <img src="home-life-logo.png" alt="Home Life" style="width:54px;height:54px;border-radius:10px;background:white;padding:7px;box-shadow:0 18px 40px rgba(0,0,0,.22)" />
+              <div><div style="color:rgba(255,255,255,.58);font-size:12px;text-transform:uppercase;font-weight:700">Home Life Negocios Imobiliarios</div><h2 style="margin:4px 0 0;font-size:30px">CRM interno de inteligencia comercial</h2></div>
+            </div>
+            <p style="margin-top:18px;max-width:760px;color:rgba(255,255,255,.68);line-height:1.6">Ambiente proprietario para operacao premium, previsao de vendas, qualidade dos leads e performance de corretores.</p>
+            <div class="grid-three" style="margin-top:24px">
+              <div class="box" style="background:rgba(255,255,255,.9);color:var(--ink)"><b>Previsao comercial</b><div class="progress"><span style="width:86%"></span></div></div>
+              <div class="box" style="background:rgba(255,255,255,.9);color:var(--ink)"><b>Aprovacao bancaria</b><div class="progress"><span style="width:68%"></span></div></div>
+              <div class="box" style="background:rgba(255,255,255,.9);color:var(--ink)"><b>Inteligencia historica</b><div class="progress"><span style="width:91%"></span></div></div>
+            </div>
+          </div>
+          <div class="hero-login">
+            <b>Acesso Home Life</b>
+            <input placeholder="email@homelife.com.br" />
+            <input placeholder="Senha" type="password" />
+            <button>Entrar no CRM</button>
+            <p style="margin-top:12px;color:rgba(255,255,255,.62);font-size:12px;line-height:1.5">Login visual premium preparado para administrador, gestor, corretor e cliente.</p>
+          </div>
+        </div></div>
+        <div class="metrics">
+          <div class="card metric"><small>Total de leads</small><b>486</b><p>Leads ativos no ciclo</p></div>
+          <div class="card metric"><small>Total de vendas</small><b>199</b><p>Historico acumulado</p></div>
+          <div class="card metric"><small>Conversao geral</small><b>10,7%</b><p>Taxa do mes atual</p></div>
+          <div class="card metric"><small>Previsao de vendas</small><b>58</b><p>Proximos 30 dias</p></div>
+          <div class="card metric"><small>Taxa de aprovacao</small><b>68%</b><p>Media bancaria</p></div>
+        </div>
+        <div class="grid-two">
+          <div class="card"><div class="section-title"><span class="icon">CV</span>Conversao historica geral</div><div class="bars">
+            ${bar('Leads',100,486)}${bar('Respondidos',84,409)}${bar('Visitas',35,171)}${bar('Propostas',12,60)}${bar('Banco',8,39)}${bar('Vendas',11,52)}
+          </div></div>
+          <div class="card"><div class="section-title"><span class="icon">HM</span>Heatmap operacional</div>${heatmap()}</div>
+        </div>
+        <div class="grid-two">${brokersTable('Melhores corretores')}${clientsTable('Leads prioritarios')}</div>
+        <div class="card"><div class="section-title"><span class="icon">AI</span>Inteligencia historica</div><div class="grid-three" style="padding:20px">
+          <div class="box">Clientes casados com renda acima de R$8.000 possuem maior taxa de conversao.</div>
+          <div class="box">Corretores com mais de 20 pastas no primeiro mes possuem maior chance de venda.</div>
+          <div class="box">Tempo medio de resposta abaixo de 10 minutos aumenta visitas.</div>
+        </div></div>`;
+
+      const brokersArea = `
+        <div class="metrics">
+          <div class="card metric"><small>Produtividade</small><b>87%</b><p>Volume operacional</p></div>
+          <div class="card metric"><small>Pastas subidas</small><b>116</b><p>Pastas no ciclo</p></div>
+          <div class="card metric"><small>Leads atendidos</small><b>409</b><p>Atendimento registrado</p></div>
+          <div class="card metric"><small>Tempo resposta</small><b>12 min</b><p>Media operacional</p></div>
+          <div class="card metric"><small>Potencial alto</small><b>3</b><p>Corretores acima de 75 IPC</p></div>
+        </div>
+        <div class="grid-two">${brokersTable('Performance operacional dos corretores')}
+          <div class="card"><div class="section-title"><span class="icon">IPC</span>IPC Corretor e risco</div><div class="list">
+            ${progress('Rafael Campos - IPC 97', 95)}${progress('Marina Albuquerque - IPC 91', 88)}${progress('Daniel Moretti - IPC 79', 75)}${progress('Bianca Tavares - IPC 54', 52)}
+          </div></div>
+        </div>
+        <div class="grid-three">
+          <div class="card"><div class="section-title"><span class="icon">EV</span>Evolucao mensal</div><div class="bars">${bar('Jan',60,31)}${bar('Fev',71,37)}${bar('Mar',67,35)}${bar('Abr',84,44)}${bar('Mai',100,52)}</div></div>
+          <div class="card"><div class="section-title"><span class="icon">MT</span>Metas comerciais</div><div class="list">${progress('Pastas do mes',82)}${progress('Visitas realizadas',76)}${progress('Propostas enviadas',68)}</div></div>
+          <div class="card"><div class="section-title"><span class="icon">RP</span>Relatorios</div><div class="list"><div class="box">Chance de venda, risco de baixa performance, comparacao historica e evolucao mensal separados da area de clientes.</div></div></div>
+        </div>`;
+
+      const clientsArea = `
+        <div class="metrics">
+          <div class="card metric"><small>Chance media compra</small><b>72%</b><p>Media dos clientes</p></div>
+          <div class="card metric"><small>Aprovacao media</small><b>68%</b><p>Probabilidade bancaria</p></div>
+          <div class="card metric"><small>Leads quentes</small><b>2</b><p>Prioridade comercial</p></div>
+          <div class="card metric"><small>Pastas ativas</small><b>4</b><p>Cliente, corretor e imovel</p></div>
+          <div class="card metric"><small>Score financeiro</small><b>683</b><p>Media de credito</p></div>
+        </div>
+        <div class="grid-two">${clientsTable('Clientes compradores e IPC Cliente')}
+          <div class="card"><div class="section-title"><span class="icon">BK</span>Aprovacao bancaria</div><div class="list">
+            ${progress('Aline Costa - Lead quente',86)}${progress('Bruno Martins - Lead quente',76)}${progress('Carolina Dias - Lead morno',59)}${progress('Eduardo Lima - Lead frio',43)}
+          </div></div>
+        </div>
+        <div class="grid-three">
+          <div class="card"><div class="section-title"><span class="icon">FN</span>Funil comercial</div><div class="bars">${bar('Leads',100,486)}${bar('Visitas',35,171)}${bar('Propostas',12,60)}${bar('Banco',8,39)}${bar('Vendas',11,52)}</div></div>
+          <div class="card"><div class="section-title"><span class="icon">LD</span>Nivel do lead</div><div class="list"><div class="box"><b>Lead quente</b><p>Aline Costa, Bruno Martins</p></div><div class="box"><b>Lead morno</b><p>Carolina Dias</p></div><div class="box"><b>Lead frio</b><p>Eduardo Lima</p></div></div></div>
+          <div class="card"><div class="section-title"><span class="icon">PS</span>Pastas conectadas</div><div class="list"><div class="box"><b>Reserva Jardim Paulista</b><p>Aline Costa - Marina Albuquerque - pasta_id ativo</p></div><div class="box"><b>Vista Atlantica</b><p>Bruno Martins - Rafael Campos - analise preditiva vinculada</p></div></div></div>
+        </div>`;
+
+      const register = title => `
+        <div class="card"><div class="section-title"><span class="icon">IN</span>${title}</div><div class="grid-three" style="padding:20px">
+          <div class="box"><b>Novo cadastro</b><p>Campos principais, status, perfil operacional e validacao de dados.</p><div class="progress"><span style="width:86%"></span></div></div>
+          <div class="box"><b>Permissoes</b><p>Administrador, gestor, corretor e cliente com visoes independentes.</p><div class="progress"><span style="width:100%"></span></div></div>
+          <div class="box"><b>LGPD</b><p>CPF completo nao aparece no frontend. A busca usa hash e a persistencia usa criptografia.</p><div class="progress"><span style="width:92%"></span></div></div>
+        </div></div>`;
+
+      function brokersTable(title) {
+        return `<div class="card table-wrap"><div class="section-title"><span class="icon">CR</span>${title}</div><table><thead><tr><th>Corretor</th><th>Pastas</th><th>Leads atendidos</th><th>Visitas</th><th>Propostas</th><th>IPC</th><th>Venda 30d</th><th>Risco</th></tr></thead><tbody>
+          <tr><td><b>Rafael Campos</b><br><span class="muted">Alto Padrao Sul</span></td><td>41</td><td>134</td><td>47</td><td>23</td><td><span class="pill good">97</span></td><td>84%</td><td>5%</td></tr>
+          <tr><td><b>Marina Albuquerque</b><br><span class="muted">Prime Norte</span></td><td>33</td><td>119</td><td>39</td><td>18</td><td><span class="pill good">91</span></td><td>75%</td><td>9%</td></tr>
+          <tr><td><b>Daniel Moretti</b><br><span class="muted">Expansao Rio</span></td><td>27</td><td>91</td><td>25</td><td>13</td><td><span class="pill good">79</span></td><td>64%</td><td>17%</td></tr>
+        </tbody></table></div>`;
+      }
+
+      function clientsTable(title) {
+        return `<div class="card table-wrap"><div class="section-title"><span class="icon">CL</span>${title}</div><table><thead><tr><th>Cliente</th><th>Renda</th><th>Entrada + FGTS</th><th>Score</th><th>Compra</th><th>Aprovacao</th><th>Nivel</th></tr></thead><tbody>
+          <tr><td><b>Aline Costa</b><br><span class="muted">123.***.***-01 - Sao Paulo</span></td><td>R$ 11.800</td><td>R$ 147.000</td><td>782</td><td>88%</td><td>86%</td><td><span class="pill good">Lead quente</span></td></tr>
+          <tr><td><b>Bruno Martins</b><br><span class="muted">987.***.***-00 - Rio de Janeiro</span></td><td>R$ 7.300</td><td>R$ 70.000</td><td>711</td><td>78%</td><td>76%</td><td><span class="pill good">Lead quente</span></td></tr>
+          <tr><td><b>Carolina Dias</b><br><span class="muted">456.***.***-44 - Belo Horizonte</span></td><td>R$ 9.200</td><td>R$ 43.000</td><td>649</td><td>61%</td><td>59%</td><td><span class="pill mid">Lead morno</span></td></tr>
+        </tbody></table></div>`;
+      }
+
+      function bar(label, width, value) {
+        return `<div class="bar-row"><b>${label}</b><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div><span>${value}</span></div>`;
+      }
+
+      function progress(label, width) {
+        return `<div class="box"><b>${label}</b><div class="progress"><span style="width:${width}%"></span></div></div>`;
+      }
+
+      function heatmap() {
+        return `<div class="heat"><span></span><span class="head">8h</span><span class="head">10h</span><span class="head">12h</span><span class="head">15h</span><span class="head">18h</span>
+          <span class="day">Seg</span><span style="opacity:.72">72</span><span style="opacity:.63">63</span><span style="opacity:.58">58</span><span style="opacity:.77">77</span><span style="opacity:.81">81</span>
+          <span class="day">Ter</span><span style="opacity:.68">68</span><span style="opacity:.74">74</span><span style="opacity:.61">61</span><span style="opacity:.82">82</span><span style="opacity:.79">79</span>
+          <span class="day">Qua</span><span style="opacity:.75">75</span><span style="opacity:.80">80</span><span style="opacity:.67">67</span><span style="opacity:.86">86</span><span style="opacity:.84">84</span>
+          <span class="day">Qui</span><span style="opacity:.71">71</span><span style="opacity:.78">78</span><span style="opacity:.73">73</span><span style="opacity:.88">88</span><span style="opacity:.91">91</span>
+          <span class="day">Sex</span><span style="opacity:.66">66</span><span style="opacity:.72">72</span><span style="opacity:.70">70</span><span style="opacity:.83">83</span><span style="opacity:.87">87</span></div>`;
+      }
+
+      function setArea(area, button) {
+        document.querySelectorAll('nav button').forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+        const title = document.getElementById('title');
+        const eyebrow = document.getElementById('eyebrow');
+        const content = document.getElementById('content');
+        if (area === 'executivo') {
+          title.textContent = 'Dashboard Executivo Geral';
+          eyebrow.textContent = 'Visao geral conectando corretores, clientes, pastas e vendas';
+          content.innerHTML = executive;
+        } else if (area === 'cadastro-corretores') {
+          title.textContent = 'Cadastro de Corretores';
+          eyebrow.textContent = 'Area de Corretores';
+          content.innerHTML = register('Cadastro de Corretores');
+        } else if (area === 'cadastro-clientes') {
+          title.textContent = 'Cadastro de Clientes';
+          eyebrow.textContent = 'Area de Clientes';
+          content.innerHTML = register('Cadastro de Clientes');
+        } else if (area === 'corretores') {
+          title.textContent = button.textContent;
+          eyebrow.textContent = 'Area de Corretores - gestao operacional e comercial';
+          content.innerHTML = brokersArea;
+        } else {
+          title.textContent = button.textContent;
+          eyebrow.textContent = 'Area de Clientes - analise preditiva de compra';
+          content.innerHTML = clientsArea;
+        }
+      }
+
+      function downloadCsv() {
+        const csv = 'tipo,nome,score\ncorretor,Rafael Campos,97\ncliente,Aline Costa,88';
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'crm-inteligencia.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      document.querySelectorAll('nav button').forEach(button => button.addEventListener('click', () => setArea(button.dataset.area, button)));
+      document.getElementById('content').innerHTML = executive;
+    </script>
+  </body>
+</html>
