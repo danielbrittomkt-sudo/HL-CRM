@@ -55,6 +55,18 @@ O schema habilita RLS nas tabelas:
 
 As policies estao comentadas no final do SQL. Para um teste autenticado simples, sera necessario descomentar/adaptar policies para `authenticated`.
 
+### Policy temporaria para Fase 2.4
+
+Para testar o MVP local da importacao CSV gravando candidatos no Supabase, use o arquivo:
+
+```text
+database/recruitment-rls-test-policies.sql
+```
+
+Esse SQL cria uma policy temporaria que permite `INSERT` na tabela `recruitment_candidates` para validar a gravacao do MVP com a chave publica. Ele tambem garante `grant insert` para as roles de teste do Supabase.
+
+Essa policy existe apenas para teste local/MVP. Antes de producao, remova essa liberacao ampla e substitua por policies seguras com autenticacao, roles e escopo por usuario/organizacao.
+
 Antes de liberar em producao, defina:
 
 - quais usuarios podem ler candidatos;

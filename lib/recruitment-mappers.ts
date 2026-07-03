@@ -125,13 +125,18 @@ export function historyRowToContactHistoryItem(row: RecruitmentContactHistoryRow
   };
 }
 
+function toDbTimestamp(value: string) {
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? new Date().toISOString() : new Date(parsed).toISOString();
+}
+
 export function contactHistoryItemToDbInsert(item: ContactHistoryItem): RecruitmentContactHistoryRow {
   return {
     nome: item.nome,
     telefone: item.telefone,
     telefone_normalizado: normalizePhone(item.telefone),
     fonte: item.fonte,
-    data_envio: item.data_envio,
+    data_envio: toDbTimestamp(item.data_envio),
     data_apresentacao: item.data_apresentacao,
     status: item.status,
     mensagem: item.mensagem,

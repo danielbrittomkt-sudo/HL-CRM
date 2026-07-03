@@ -17,11 +17,9 @@ export async function getRecruitmentSettings() {
 
 export async function upsertRecruitmentSettings(settings: RecruitmentSettings) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from(tableName)
-    .upsert(recruitmentSettingsToDbUpsert(settings), { onConflict: "id" })
-    .select("*")
-    .single();
+    .upsert(recruitmentSettingsToDbUpsert(settings), { onConflict: "id" });
   if (error) throw error;
-  return settingsRowToRecruitmentSettings(data as RecruitmentSettingsRow);
+  return settings;
 }

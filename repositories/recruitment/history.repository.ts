@@ -18,7 +18,7 @@ export async function listRecruitmentContactHistory() {
 export async function insertRecruitmentContactHistory(items: ContactHistoryItem[]) {
   const supabase = getSupabaseClient();
   const rows = items.map(contactHistoryItemToDbInsert);
-  const { data, error } = await supabase.from(tableName).insert(rows).select("*");
+  const { error } = await supabase.from(tableName).insert(rows);
   if (error) throw error;
-  return ((data || []) as RecruitmentContactHistoryRow[]).map(historyRowToContactHistoryItem);
+  return items;
 }

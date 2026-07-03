@@ -15,13 +15,25 @@ export async function listRecruitmentCandidates() {
   return ((data || []) as RecruitmentCandidateRow[]).map(candidateRowToRecruitmentCandidate);
 }
 
+export async function findRecruitmentCandidateByNormalizedPhone(normalizedPhone: string) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(tableName)
+    .select("*")
+    .eq("telefone_normalizado", normalizedPhone)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? candidateRowToRecruitmentCandidate(data as RecruitmentCandidateRow) : null;
+}
+
 export async function upsertRecruitmentCandidates(candidates: RecruitmentCandidate[]) {
   const supabase = getSupabaseClient();
   const rows = candidates.map(recruitmentCandidateToDbInsert);
-  const { data, error } = await supabase
-    .from(tableName)
-    .upsert(rows, { onConflict: "telefone_normalizado" })
-    .select("*");
+  const results = await Promise.all(rows.map((row) => supabase.from(tableName).insert(row)));
+  const error = results.find((result) => result.error && result.error.code !== "23505")?.error;
+
   if (error) throw error;
-  return ((data || []) as RecruitmentCandidateRow[]).map(candidateRowToRecruitmentCandidate);
+
+  return candidates;
 }

@@ -22,7 +22,7 @@ export async function replaceRecruitmentQueue(items: SendQueueItem[]) {
   if (!items.length) return [];
 
   const rows = items.map(sendQueueItemToDbInsert);
-  const { data, error } = await supabase.from(tableName).insert(rows).select("*");
+  const { error } = await supabase.from(tableName).insert(rows);
   if (error) throw error;
-  return ((data || []) as RecruitmentQueueRow[]).map(queueRowToSendQueueItem);
+  return items;
 }

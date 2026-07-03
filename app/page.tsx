@@ -44,10 +44,14 @@ import {
 import { brokers, clients, conversionByMonth, folders, funnel, heatmap, insights } from "@/lib/data";
 import { parseRecruitmentCsv } from "@/lib/recruitment-import";
 import type { RecruitmentImportSummary } from "@/lib/recruitment-import";
-import { candidateList, contactHistory, importedCandidates, recruitmentSettings, sendQueue } from "@/lib/recruitment-data";
+import { candidateList, contactHistory, importedCandidates, recruitmentSettings as defaultRecruitmentSettings, sendQueue } from "@/lib/recruitment-data";
 import { generateTodaySendQueue } from "@/lib/recruitment-scheduler";
 import { clearRecruitmentStorage, loadRecruitmentStorage, saveRecruitmentStorage } from "@/lib/recruitment-storage";
-import type { ContactHistoryItem, RecruitmentCandidate, SendQueueItem } from "@/lib/recruitment-types";
+import type { ContactHistoryItem, RecruitmentCandidate, RecruitmentSettings as RecruitmentSettingsType, SendQueueItem } from "@/lib/recruitment-types";
+import { getCandidates, saveCandidates } from "@/services/recruitment/candidates.service";
+import { getContactHistory, saveContactHistory } from "@/services/recruitment/history.service";
+import { getQueue, saveQueue } from "@/services/recruitment/queue.service";
+import { loadSettings, saveSettings } from "@/services/recruitment/settings.service";
 import { analyzeBroker, analyzeClient } from "@/lib/scoring";
 import { maskCpf } from "@/lib/security";
 
@@ -351,6 +355,8 @@ export default function Page() {
   const [importError, setImportError] = useState("");
   const [generatedQueue, setGeneratedQueue] = useState<SendQueueItem[]>(sendQueue);
   const [contactHistoryRows, setContactHistoryRows] = useState<ContactHistoryItem[]>(contactHistory);
+  const [recruitmentSettingsState, setRecruitmentSettingsState] = useState<RecruitmentSettingsType>(defaultRecruitmentSettings);
+  const [settingsDraft, setSettingsDraft] = useState<RecruitmentSettingsType>(defaultRecruitmentSettings);
   const [storageReady, setStorageReady] = useState(false);
   const latest = conversionByMonth[conversionByMonth.length - 1];
   const conversionRate = Math.round((latest.vendas / latest.leads) * 1000) / 10;
@@ -374,11 +380,57 @@ export default function Page() {
   ];
 
   useEffect(() => {
-    const stored = loadRecruitmentStorage();
-    if (stored.candidates) setImportRows(stored.candidates);
-    if (stored.queue) setGeneratedQueue(stored.queue);
-    if (stored.history) setContactHistoryRows(stored.history);
-    setStorageReady(true);
+    let cancelled = false;
+
+    async function loadInitialRecruitmentData() {
+      const stored = loadRecruitmentStorage();
+      let nextCandidates = stored.candidates ?? importedCandidates;
+      let nextQueue = stored.queue ?? sendQueue;
+      let nextHistory = stored.history ?? contactHistory;
+      let nextSettings = stored.settings ?? defaultRecruitmentSettings;
+
+      try {
+        const supabaseCandidates = await getCandidates();
+        if (supabaseCandidates.length) nextCandidates = supabaseCandidates;
+      } catch (error) {
+        console.error("Falha ao carregar recruitment_candidates do Supabase. Usando localStorage.", error);
+      }
+
+      try {
+        const supabaseQueue = await getQueue();
+        if (supabaseQueue.length) nextQueue = supabaseQueue;
+      } catch (error) {
+        console.error("Falha ao carregar recruitment_queue do Supabase. Usando localStorage.", error);
+      }
+
+      try {
+        const supabaseHistory = await getContactHistory();
+        if (supabaseHistory.length) nextHistory = supabaseHistory;
+      } catch (error) {
+        console.error("Falha ao carregar recruitment_contact_history do Supabase. Usando localStorage.", error);
+      }
+
+      try {
+        const supabaseSettings = await loadSettings();
+        if (supabaseSettings) nextSettings = supabaseSettings;
+      } catch (error) {
+        console.error("Falha ao carregar recruitment_settings do Supabase. Usando localStorage.", error);
+      }
+
+      if (cancelled) return;
+      setImportRows(nextCandidates);
+      setGeneratedQueue(nextQueue);
+      setContactHistoryRows(nextHistory);
+      setRecruitmentSettingsState(nextSettings);
+      setSettingsDraft(nextSettings);
+      setStorageReady(true);
+    }
+
+    loadInitialRecruitmentData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -386,21 +438,27 @@ export default function Page() {
     saveRecruitmentStorage({
       candidates: importRows,
       queue: generatedQueue,
-      history: contactHistoryRows
+      history: contactHistoryRows,
+      settings: recruitmentSettingsState
     });
-  }, [contactHistoryRows, generatedQueue, importRows, storageReady]);
+  }, [contactHistoryRows, generatedQueue, importRows, recruitmentSettingsState, storageReady]);
 
   function handleCandidateCsv(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const result = parseRecruitmentCsv(String(reader.result || ""));
         setImportRows(result.candidates);
         setImportSummary(result.summary);
         setImportError("");
+        try {
+          await saveCandidates(result.candidates);
+        } catch (error) {
+          console.error("Falha ao salvar candidatos no Supabase. Mantendo fluxo localStorage.", error);
+        }
       } catch (error) {
         setImportError(error instanceof Error ? error.message : "Falha ao importar CSV.");
       }
@@ -409,45 +467,93 @@ export default function Page() {
     reader.readAsText(file, "utf-8");
   }
 
-  function handleGenerateQueue() {
-    setGeneratedQueue(generateTodaySendQueue(importRows, recruitmentSettings));
+  async function handleGenerateQueue() {
+    const queue = generateTodaySendQueue(importRows, recruitmentSettingsState);
+    setGeneratedQueue(queue);
+    try {
+      await saveQueue(queue);
+    } catch (error) {
+      console.error("Falha ao salvar fila no Supabase. Mantendo fluxo localStorage.", error);
+    }
   }
 
-  function handleSimulateSend() {
+  async function handleSimulateSend() {
     const now = new Date();
     const dataEnvio = now.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
     const pendingItems = generatedQueue.filter((item) => item.status_envio === "pendente_envio");
 
     if (!pendingItems.length) return;
 
+    const existingKeys = new Set(contactHistoryRows.map((item) => `${item.telefone}-${item.data_apresentacao}-${item.status}`));
+    const newItems = pendingItems
+      .filter((item) => !existingKeys.has(`${item.telefone}-${item.apresentacao} ${item.horario_apresentacao}-mensagem_enviada`))
+      .map((item) => ({
+        nome: item.nome,
+        telefone: item.telefone,
+        fonte: item.fonte,
+        data_envio: dataEnvio,
+        data_apresentacao: `${item.apresentacao} ${item.horario_apresentacao}`,
+        status: "mensagem_enviada" as const,
+        mensagem: item.mensagem,
+        data: dataEnvio
+      }));
+
     setGeneratedQueue((current) =>
       current.map((item) => item.status_envio === "pendente_envio" ? { ...item, status_envio: "mensagem_enviada" } : item)
     );
     setContactHistoryRows((current) => {
-      const existingKeys = new Set(current.map((item) => `${item.telefone}-${item.data_apresentacao}-${item.status}`));
-      const newItems = pendingItems
-        .filter((item) => !existingKeys.has(`${item.telefone}-${item.apresentacao} ${item.horario_apresentacao}-mensagem_enviada`))
-        .map((item) => ({
-          nome: item.nome,
-          telefone: item.telefone,
-          fonte: item.fonte,
-          data_envio: dataEnvio,
-          data_apresentacao: `${item.apresentacao} ${item.horario_apresentacao}`,
-          status: "mensagem_enviada" as const,
-          mensagem: item.mensagem,
-          data: dataEnvio
-        }));
-      return [...newItems, ...current];
+      const currentKeys = new Set(current.map((item) => `${item.telefone}-${item.data_apresentacao}-${item.status}`));
+      const uniqueNewItems = newItems.filter((item) => !currentKeys.has(`${item.telefone}-${item.data_apresentacao}-${item.status}`));
+      return [...uniqueNewItems, ...current];
     });
+    if (newItems.length) {
+      try {
+        await saveContactHistory(newItems);
+      } catch (error) {
+        console.error("Falha ao salvar historico no Supabase. Mantendo fluxo localStorage.", error);
+      }
+    }
   }
 
-  function handleClearRecruitmentData() {
+  function normalizePresentationDays(value: string) {
+    return value
+      .split(/,| e /)
+      .map((day) => day.trim())
+      .filter(Boolean);
+  }
+
+  async function handleSaveRecruitmentSettings() {
+    const settingsToSave = {
+      ...settingsDraft,
+      quantidadePorDia: Number(settingsDraft.quantidadePorDia) || defaultRecruitmentSettings.quantidadePorDia,
+      diasApresentacao: settingsDraft.diasApresentacao.length ? settingsDraft.diasApresentacao : defaultRecruitmentSettings.diasApresentacao
+    };
+
+    setRecruitmentSettingsState(settingsToSave);
+    setSettingsDraft(settingsToSave);
+
+    try {
+      await saveSettings(settingsToSave);
+    } catch (error) {
+      console.error("Falha ao salvar configuracoes no Supabase. Mantendo fluxo localStorage.", error);
+    }
+  }
+
+  async function handleClearRecruitmentData() {
     clearRecruitmentStorage();
     setImportRows(importedCandidates);
     setImportSummary(null);
     setImportError("");
     setGeneratedQueue(sendQueue);
     setContactHistoryRows(contactHistory);
+    setRecruitmentSettingsState(defaultRecruitmentSettings);
+    setSettingsDraft(defaultRecruitmentSettings);
+
+    try {
+      await saveSettings(defaultRecruitmentSettings);
+    } catch (error) {
+      console.error("Falha ao resetar configuracoes no Supabase. Mantendo fluxo localStorage.", error);
+    }
   }
 
   function ExecutiveDashboard() {
@@ -839,7 +945,7 @@ export default function Page() {
     return (
       <Card>
         <SectionTitle icon={Users} title="Lista de candidatos" />
-        <CandidateTable rows={candidateList} />
+        <CandidateTable rows={importRows.length ? importRows : candidateList} />
       </Card>
     );
   }
@@ -918,18 +1024,41 @@ export default function Page() {
         <SectionTitle icon={KeyRound} title="Configuracoes de envio" />
         <div className="grid gap-5 p-5 md:grid-cols-2 xl:grid-cols-4">
           {[
-            ["Quantidade por dia", String(recruitmentSettings.quantidadePorDia)],
-            ["Horario de envio", recruitmentSettings.horarioEnvio],
-            ["Dias de apresentacao", recruitmentSettings.diasApresentacao.join(" e ")],
-            ["Horario da apresentacao", recruitmentSettings.horarioApresentacao]
-          ].map(([label, value]) => (
-            <label key={label} className="block rounded-lg border border-line p-4">
-              <span className="text-xs font-medium uppercase tracking-normal text-steel">{label}</span>
-              <input className="mt-3 h-10 w-full rounded-md border border-line px-3 text-sm font-semibold text-ink outline-none" defaultValue={value} />
+            {
+              label: "Quantidade por dia",
+              value: String(settingsDraft.quantidadePorDia),
+              onChange: (value: string) => setSettingsDraft((current) => ({ ...current, quantidadePorDia: Number(value) }))
+            },
+            {
+              label: "Horario de envio",
+              value: settingsDraft.horarioEnvio,
+              onChange: (value: string) => setSettingsDraft((current) => ({ ...current, horarioEnvio: value }))
+            },
+            {
+              label: "Dias de apresentacao",
+              value: settingsDraft.diasApresentacao.join(" e "),
+              onChange: (value: string) => setSettingsDraft((current) => ({ ...current, diasApresentacao: normalizePresentationDays(value) }))
+            },
+            {
+              label: "Horario da apresentacao",
+              value: settingsDraft.horarioApresentacao,
+              onChange: (value: string) => setSettingsDraft((current) => ({ ...current, horarioApresentacao: value }))
+            }
+          ].map((field) => (
+            <label key={field.label} className="block rounded-lg border border-line p-4">
+              <span className="text-xs font-medium uppercase tracking-normal text-steel">{field.label}</span>
+              <input
+                className="mt-3 h-10 w-full rounded-md border border-line px-3 text-sm font-semibold text-ink outline-none"
+                value={field.value}
+                onChange={(event) => field.onChange(event.target.value)}
+              />
             </label>
           ))}
         </div>
-        <div className="border-t border-line p-5">
+        <div className="flex flex-wrap gap-3 border-t border-line p-5">
+          <button type="button" onClick={handleSaveRecruitmentSettings} className="h-10 rounded-md bg-navy px-4 text-sm font-semibold text-white transition hover:bg-ocean">
+            Salvar configurações
+          </button>
           <button type="button" onClick={handleClearRecruitmentData} className="h-10 rounded-md border border-line bg-white px-4 text-sm font-semibold text-navy transition hover:border-gold hover:text-ink">
             Limpar dados de teste
           </button>
