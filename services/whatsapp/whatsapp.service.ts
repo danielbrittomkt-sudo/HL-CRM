@@ -21,14 +21,58 @@ type WhatsAppCloudApiResponse = {
   };
 };
 
+type WhatsAppTemplatePayload = {
+  name: string;
+  language: {
+    code: string;
+  };
+  components?: Array<{
+    type: "body";
+    parameters: Array<{
+      type: "text";
+      text: string;
+    }>;
+  }>;
+};
+
 function normalizeWhatsAppPhone(telefone: string) {
   const digits = telefone.replace(/\D/g, "");
   return digits.startsWith("55") ? digits : `55${digits}`;
 }
 
+function buildTemplatePayload(templateName: string, templateLanguage: string): WhatsAppTemplatePayload {
+  if (templateName === "convite_apresentacao_corretor") {
+    return {
+      name: templateName,
+      language: {
+        code: templateLanguage
+      },
+      components: [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: "Nome do candidato" },
+            { type: "text", text: "Data da apresentacao" },
+            { type: "text", text: "14:00" }
+          ]
+        }
+      ]
+    };
+  }
+
+  return {
+    name: templateName,
+    language: {
+      code: templateLanguage
+    }
+  };
+}
+
 export async function sendWhatsAppMessage({ telefone, mensagem }: SendWhatsAppMessageInput): Promise<SendWhatsAppMessageResult> {
   const dryRun = process.env.WHATSAPP_DRY_RUN !== "false";
   const normalizedPhone = normalizeWhatsAppPhone(telefone);
+  const templateName = process.env.WHATSAPP_TEMPLATE_NAME || "hello_world";
+  const templateLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en_US";
 
   if (dryRun) {
     console.log("WHATSAPP_DRY_RUN_OK", { to: normalizedPhone, messageLength: mensagem.length });
@@ -68,12 +112,7 @@ export async function sendWhatsAppMessage({ telefone, mensagem }: SendWhatsAppMe
         messaging_product: "whatsapp",
         to: normalizedPhone,
         type: "template",
-        template: {
-          name: "hello_world",
-          language: {
-            code: "en_US"
-          }
-        }
+        template: buildTemplatePayload(templateName, templateLanguage)
       })
     });
 
