@@ -348,6 +348,63 @@ function ClientTable({ rows }: { rows: ClientRow[] }) {
 const brokerRows = brokers.map((broker) => ({ ...broker, analise: analyzeBroker(broker) })).sort((a, b) => b.analise.ipc - a.analise.ipc);
 const clientRows = clients.map((client) => ({ ...client, cpf: maskCpf(client.cpf), analise: analyzeClient(client) })).sort((a, b) => b.analise.ipc - a.analise.ipc);
 
+async function loadRecruitmentDataSnapshot() {
+  const stored = loadRecruitmentStorage();
+  let nextCandidates = stored.candidates ?? importedCandidates;
+  let nextQueue = stored.queue ?? sendQueue;
+  let nextHistory = stored.history ?? contactHistory;
+  let nextSettings = normalizeRecruitmentSettings(stored.settings ?? defaultRecruitmentSettings);
+
+  try {
+    const supabaseCandidates = await getCandidates();
+    if (supabaseCandidates.length) nextCandidates = supabaseCandidates;
+  } catch (error) {
+    console.error("Falha ao carregar recruitment_candidates do Supabase. Usando localStorage.", error);
+  }
+
+  try {
+    const supabaseQueue = await getQueue();
+    if (supabaseQueue.length) nextQueue = supabaseQueue;
+  } catch (error) {
+    console.error("Falha ao carregar recruitment_queue do Supabase. Usando localStorage.", error);
+  }
+
+  try {
+    const supabaseHistory = await getContactHistory();
+    if (supabaseHistory.length) nextHistory = supabaseHistory;
+  } catch (error) {
+    console.error("Falha ao carregar recruitment_contact_history do Supabase. Usando localStorage.", error);
+  }
+
+  try {
+    const supabaseSettings = await loadSettings();
+    if (supabaseSettings) nextSettings = normalizeRecruitmentSettings(supabaseSettings);
+  } catch (error) {
+    console.error("Falha ao carregar recruitment_settings do Supabase. Usando localStorage.", error);
+  }
+
+  return {
+    candidates: nextCandidates,
+    queue: nextQueue,
+    history: nextHistory,
+    settings: nextSettings
+  };
+}
+
+function normalizeRecruitmentSettings(settings: RecruitmentSettingsType): RecruitmentSettingsType {
+  return {
+    ...defaultRecruitmentSettings,
+    ...settings,
+    quantidadePorDia: Number(settings.quantidadePorDia) >= 1 ? Number(settings.quantidadePorDia) : defaultRecruitmentSettings.quantidadePorDia,
+    limiteDiario: Number(settings.limiteDiario) >= 1 ? Number(settings.limiteDiario) : defaultRecruitmentSettings.limiteDiario,
+    limiteSemanal: Number(settings.limiteSemanal) >= 1 ? Number(settings.limiteSemanal) : defaultRecruitmentSettings.limiteSemanal,
+    limiteMensal: Number(settings.limiteMensal) >= 1 ? Number(settings.limiteMensal) : defaultRecruitmentSettings.limiteMensal,
+    orcamentoMensalWhatsApp: Number(settings.orcamentoMensalWhatsApp) >= 0 ? Number(settings.orcamentoMensalWhatsApp) : defaultRecruitmentSettings.orcamentoMensalWhatsApp,
+    diasApresentacao: settings.diasApresentacao.length ? settings.diasApresentacao : defaultRecruitmentSettings.diasApresentacao,
+    horarioApresentacao: "14:00"
+  };
+}
+
 export default function Page() {
   const [active, setActive] = useState<ModuleKey>("dashboard-recrutamento");
   const [importRows, setImportRows] = useState<RecruitmentCandidate[]>(importedCandidates);
@@ -358,6 +415,9 @@ export default function Page() {
   const [recruitmentSettingsState, setRecruitmentSettingsState] = useState<RecruitmentSettingsType>(defaultRecruitmentSettings);
   const [settingsDraft, setSettingsDraft] = useState<RecruitmentSettingsType>(defaultRecruitmentSettings);
   const [storageReady, setStorageReady] = useState(false);
+  const [isRecruitmentRefreshing, setIsRecruitmentRefreshing] = useState(false);
+  const [sendingQueueItemId, setSendingQueueItemId] = useState<number | null>(null);
+  const [whatsappSendFeedback, setWhatsappSendFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const latest = conversionByMonth[conversionByMonth.length - 1];
   const conversionRate = Math.round((latest.vendas / latest.leads) * 1000) / 10;
   const title = titles[active];
@@ -383,46 +443,14 @@ export default function Page() {
     let cancelled = false;
 
     async function loadInitialRecruitmentData() {
-      const stored = loadRecruitmentStorage();
-      let nextCandidates = stored.candidates ?? importedCandidates;
-      let nextQueue = stored.queue ?? sendQueue;
-      let nextHistory = stored.history ?? contactHistory;
-      let nextSettings = stored.settings ?? defaultRecruitmentSettings;
-
-      try {
-        const supabaseCandidates = await getCandidates();
-        if (supabaseCandidates.length) nextCandidates = supabaseCandidates;
-      } catch (error) {
-        console.error("Falha ao carregar recruitment_candidates do Supabase. Usando localStorage.", error);
-      }
-
-      try {
-        const supabaseQueue = await getQueue();
-        if (supabaseQueue.length) nextQueue = supabaseQueue;
-      } catch (error) {
-        console.error("Falha ao carregar recruitment_queue do Supabase. Usando localStorage.", error);
-      }
-
-      try {
-        const supabaseHistory = await getContactHistory();
-        if (supabaseHistory.length) nextHistory = supabaseHistory;
-      } catch (error) {
-        console.error("Falha ao carregar recruitment_contact_history do Supabase. Usando localStorage.", error);
-      }
-
-      try {
-        const supabaseSettings = await loadSettings();
-        if (supabaseSettings) nextSettings = supabaseSettings;
-      } catch (error) {
-        console.error("Falha ao carregar recruitment_settings do Supabase. Usando localStorage.", error);
-      }
+      const nextData = await loadRecruitmentDataSnapshot();
 
       if (cancelled) return;
-      setImportRows(nextCandidates);
-      setGeneratedQueue(nextQueue);
-      setContactHistoryRows(nextHistory);
-      setRecruitmentSettingsState(nextSettings);
-      setSettingsDraft(nextSettings);
+      setImportRows(nextData.candidates);
+      setGeneratedQueue(nextData.queue);
+      setContactHistoryRows(nextData.history);
+      setRecruitmentSettingsState(nextData.settings);
+      setSettingsDraft(nextData.settings);
       setStorageReady(true);
     }
 
@@ -442,6 +470,21 @@ export default function Page() {
       settings: recruitmentSettingsState
     });
   }, [contactHistoryRows, generatedQueue, importRows, recruitmentSettingsState, storageReady]);
+
+  async function handleRefreshRecruitmentData() {
+    setIsRecruitmentRefreshing(true);
+    try {
+      const nextData = await loadRecruitmentDataSnapshot();
+      setImportRows(nextData.candidates);
+      setGeneratedQueue(nextData.queue);
+      setContactHistoryRows(nextData.history);
+      setRecruitmentSettingsState(nextData.settings);
+      setSettingsDraft(nextData.settings);
+      saveRecruitmentStorage(nextData);
+    } finally {
+      setIsRecruitmentRefreshing(false);
+    }
+  }
 
   function handleCandidateCsv(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -515,6 +558,83 @@ export default function Page() {
     }
   }
 
+  async function handleSendQueueItemWhatsApp(queueItem: SendQueueItem) {
+    if (queueItem.status_envio !== "pendente_envio" || sendingQueueItemId !== null) return;
+
+    setSendingQueueItemId(queueItem.id);
+    setWhatsappSendFeedback(null);
+
+    try {
+      const response = await fetch("/api/recruitment/send-whatsapp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          telefone: queueItem.telefone,
+          mensagem: "Mensagem enviada pelo CRM Home Life."
+        })
+      });
+      const result = (await response.json()) as {
+        success?: boolean;
+        simulated?: boolean;
+        provider?: string;
+        messageId?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !result.success) {
+        setWhatsappSendFeedback({
+          type: "error",
+          message: result.error || "Nao foi possivel enviar o WhatsApp. Tente novamente."
+        });
+        return;
+      }
+
+      const now = new Date();
+      const dataEnvio = now.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+      const updatedQueue = generatedQueue.map((item) =>
+        item.id === queueItem.id ? { ...item, status_envio: "mensagem_enviada" as const } : item
+      );
+      const historyItem: ContactHistoryItem = {
+        nome: queueItem.nome,
+        telefone: queueItem.telefone,
+        fonte: queueItem.fonte,
+        data_envio: dataEnvio,
+        data_apresentacao: `${queueItem.apresentacao} ${queueItem.horario_apresentacao}`,
+        status: "mensagem_enviada",
+        mensagem: queueItem.mensagem,
+        data: dataEnvio
+      };
+
+      setGeneratedQueue(updatedQueue);
+      setContactHistoryRows((current) => [historyItem, ...current]);
+      setWhatsappSendFeedback({
+        type: "success",
+        message: result.messageId ? `WhatsApp enviado. ID ${result.messageId}` : "WhatsApp enviado com sucesso."
+      });
+
+      try {
+        await saveQueue(updatedQueue);
+      } catch (error) {
+        console.error("Falha ao salvar fila no Supabase. Mantendo fluxo localStorage.", error);
+      }
+
+      try {
+        await saveContactHistory([historyItem]);
+      } catch (error) {
+        console.error("Falha ao salvar historico no Supabase. Mantendo fluxo localStorage.", error);
+      }
+    } catch (error) {
+      setWhatsappSendFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Falha ao chamar endpoint de WhatsApp."
+      });
+    } finally {
+      setSendingQueueItemId(null);
+    }
+  }
+
   function normalizePresentationDays(value: string) {
     return value
       .split(/,| e /)
@@ -523,11 +643,14 @@ export default function Page() {
   }
 
   async function handleSaveRecruitmentSettings() {
-    const settingsToSave = {
+    const settingsToSave = normalizeRecruitmentSettings({
       ...settingsDraft,
-      quantidadePorDia: Number(settingsDraft.quantidadePorDia) || defaultRecruitmentSettings.quantidadePorDia,
-      diasApresentacao: settingsDraft.diasApresentacao.length ? settingsDraft.diasApresentacao : defaultRecruitmentSettings.diasApresentacao
-    };
+      quantidadePorDia: Number(settingsDraft.quantidadePorDia),
+      limiteDiario: Number(settingsDraft.limiteDiario),
+      limiteSemanal: Number(settingsDraft.limiteSemanal),
+      limiteMensal: Number(settingsDraft.limiteMensal),
+      orcamentoMensalWhatsApp: Number(settingsDraft.orcamentoMensalWhatsApp)
+    });
 
     setRecruitmentSettingsState(settingsToSave);
     setSettingsDraft(settingsToSave);
@@ -876,6 +999,16 @@ export default function Page() {
 
     return (
       <>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={handleRefreshRecruitmentData}
+            disabled={isRecruitmentRefreshing}
+            className="h-9 rounded-md border border-line bg-white px-3 text-sm font-semibold text-navy transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isRecruitmentRefreshing ? "Atualizando..." : "Atualizar dados"}
+          </button>
+        </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <Metric label="Candidatos importados" value={String(importRows.length)} icon={Users} detail="Total recebido por planilhas" />
           <Metric label="Candidatos validos" value={String(validCandidates)} icon={CheckCircle2} detail="Aptos para contato" />
@@ -963,8 +1096,16 @@ export default function Page() {
             </div>
           }
         />
+        <div className="border-t border-line px-5 py-3 text-sm text-steel">
+          Envio real unitario via WhatsApp usando o template/configuracao atual. Enquanto o template oficial esta em analise, o envio usa hello_world.
+          {whatsappSendFeedback ? (
+            <p className={`mt-2 font-semibold ${whatsappSendFeedback.type === "success" ? "text-success" : "text-danger"}`}>
+              {whatsappSendFeedback.message}
+            </p>
+          ) : null}
+        </div>
         <div className="overflow-x-auto thin-scrollbar">
-          <table className="w-full min-w-[1120px] text-left text-sm">
+          <table className="w-full min-w-[1240px] text-left text-sm">
             <thead className="bg-mist text-xs uppercase tracking-normal text-steel">
               <tr>
                 <th className="px-5 py-3">#</th>
@@ -975,6 +1116,7 @@ export default function Page() {
                 <th className="px-5 py-3">Horario</th>
                 <th className="px-5 py-3">Status envio</th>
                 <th className="px-5 py-3">Mensagem pronta</th>
+                <th className="px-5 py-3">WhatsApp</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -988,6 +1130,16 @@ export default function Page() {
                   <td className="px-5 py-4">{item.horario_apresentacao}</td>
                   <td className="px-5 py-4"><span className="rounded-md bg-mist px-2 py-1 text-xs font-semibold text-navy">{item.status_envio}</span></td>
                   <td className="px-5 py-4 text-steel">{item.mensagem}</td>
+                  <td className="px-5 py-4">
+                    <button
+                      type="button"
+                      onClick={() => handleSendQueueItemWhatsApp(item)}
+                      disabled={item.status_envio !== "pendente_envio" || sendingQueueItemId !== null}
+                      className="h-9 rounded-md border border-line bg-white px-3 text-xs font-semibold text-navy transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {sendingQueueItemId === item.id ? "Enviando..." : item.status_envio === "mensagem_enviada" ? "Enviado" : "Enviar WhatsApp"}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1043,6 +1195,26 @@ export default function Page() {
               label: "Horario da apresentacao",
               value: settingsDraft.horarioApresentacao,
               onChange: (value: string) => setSettingsDraft((current) => ({ ...current, horarioApresentacao: value }))
+            },
+            {
+              label: "Limite diario",
+              value: String(settingsDraft.limiteDiario),
+              onChange: (value: string) => setSettingsDraft((current) => ({ ...current, limiteDiario: Number(value) }))
+            },
+            {
+              label: "Limite semanal",
+              value: String(settingsDraft.limiteSemanal),
+              onChange: (value: string) => setSettingsDraft((current) => ({ ...current, limiteSemanal: Number(value) }))
+            },
+            {
+              label: "Limite mensal",
+              value: String(settingsDraft.limiteMensal),
+              onChange: (value: string) => setSettingsDraft((current) => ({ ...current, limiteMensal: Number(value) }))
+            },
+            {
+              label: "Orcamento mensal WhatsApp",
+              value: String(settingsDraft.orcamentoMensalWhatsApp),
+              onChange: (value: string) => setSettingsDraft((current) => ({ ...current, orcamentoMensalWhatsApp: Number(value) }))
             }
           ].map((field) => (
             <label key={field.label} className="block rounded-lg border border-line p-4">
