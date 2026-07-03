@@ -67,9 +67,12 @@ export async function sendWhatsAppMessage({ telefone, mensagem }: SendWhatsAppMe
       body: JSON.stringify({
         messaging_product: "whatsapp",
         to: normalizedPhone,
-        type: "text",
-        text: {
-          body: mensagem
+        type: "template",
+        template: {
+          name: "hello_world",
+          language: {
+            code: "en_US"
+          }
         }
       })
     });
