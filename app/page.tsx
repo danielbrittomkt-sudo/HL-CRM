@@ -414,6 +414,35 @@ function isValidQueuePhone(telefone: string) {
   return normalizedPhone.length >= 12 && normalizedPhone.length <= 13 && normalizedPhone.startsWith("55");
 }
 
+function getLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getHistoryDateKey(item: ContactHistoryItem) {
+  if (item.envioDateKey) return item.envioDateKey;
+
+  const sourceDate = item.data_envio || item.data;
+  const parsed = Date.parse(sourceDate);
+  if (!Number.isNaN(parsed)) return getLocalDateKey(new Date(parsed));
+
+  const localDateMatch = sourceDate.match(/^(\d{2})\/(\d{2})/);
+  if (!localDateMatch) return "";
+
+  const currentYear = new Date().getFullYear();
+  return `${currentYear}-${localDateMatch[2]}-${localDateMatch[1]}`;
+}
+
+function getWhatsAppDailyLimit(settings: RecruitmentSettingsType) {
+  return Number(settings.limiteDiario) >= 1 ? Number(settings.limiteDiario) : 10;
+}
+
+function isWhatsAppHistoryForDate(item: ContactHistoryItem, dateKey: string) {
+  return item.status === "mensagem_enviada" && item.origem === "WhatsApp" && getHistoryDateKey(item) === dateKey;
+}
+
 export default function Page() {
   const [active, setActive] = useState<ModuleKey>("dashboard-recrutamento");
   const [importRows, setImportRows] = useState<RecruitmentCandidate[]>(importedCandidates);
@@ -430,6 +459,9 @@ export default function Page() {
   const latest = conversionByMonth[conversionByMonth.length - 1];
   const conversionRate = Math.round((latest.vendas / latest.leads) * 1000) / 10;
   const title = titles[active];
+  const whatsappTodayDateKey = getLocalDateKey();
+  const whatsappDailyLimit = getWhatsAppDailyLimit(recruitmentSettingsState);
+  const whatsappSendsToday = contactHistoryRows.filter((item) => isWhatsAppHistoryForDate(item, whatsappTodayDateKey)).length;
 
   const folderRows = useMemo(
     () =>
@@ -585,6 +617,26 @@ export default function Page() {
       return;
     }
 
+    const todayDateKey = getLocalDateKey();
+    const normalizedQueuePhone = normalizeQueuePhone(queueItem.telefone);
+    const sentTodayCount = contactHistoryRows.filter((item) => isWhatsAppHistoryForDate(item, todayDateKey)).length;
+    const phoneAlreadySentToday = contactHistoryRows.some(
+      (item) => isWhatsAppHistoryForDate(item, todayDateKey) && normalizeQueuePhone(item.telefone) === normalizedQueuePhone
+    );
+
+    if (phoneAlreadySentToday) {
+      setWhatsappSendFeedback({ type: "error", message: "Este telefone já recebeu WhatsApp hoje." });
+      return;
+    }
+
+    if (sentTodayCount >= getWhatsAppDailyLimit(recruitmentSettingsState)) {
+      setWhatsappSendFeedback({
+        type: "error",
+        message: "Limite diário de WhatsApp atingido. Tente novamente amanhã ou ajuste o limite nas configurações."
+      });
+      return;
+    }
+
     const confirmed = window.confirm("Tem certeza que deseja enviar WhatsApp para este candidato?");
     if (!confirmed) return;
 
@@ -620,6 +672,7 @@ export default function Page() {
 
       const now = new Date();
       const dataEnvio = now.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+      const envioDateKey = getLocalDateKey(now);
       const updatedQueue = generatedQueue.map((item) =>
         item.id === queueItem.id ? { ...item, status_envio: "mensagem_enviada" as const } : item
       );
@@ -633,7 +686,8 @@ export default function Page() {
         mensagem: result.messageId ? `${queueItem.mensagem} Origem: WhatsApp. MessageId: ${result.messageId}` : `${queueItem.mensagem} Origem: WhatsApp.`,
         data: dataEnvio,
         origem: "WhatsApp",
-        messageId: result.messageId
+        messageId: result.messageId,
+        envioDateKey
       };
 
       setGeneratedQueue(updatedQueue);
@@ -1127,6 +1181,7 @@ export default function Page() {
         />
         <div className="border-t border-line px-5 py-3 text-sm text-steel">
           Modo teste: o envio atual usa o template configurado na Meta. Aguarde aprovacao do modelo oficial da Home Life.
+          <p className="mt-2 font-semibold text-navy">Envios WhatsApp hoje: {whatsappSendsToday} / {whatsappDailyLimit}</p>
           {whatsappSendFeedback ? (
             <p className={`mt-2 font-semibold ${whatsappSendFeedback.type === "success" ? "text-success" : "text-danger"}`}>
               {whatsappSendFeedback.message}

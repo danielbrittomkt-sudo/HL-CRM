@@ -113,6 +113,9 @@ export function sendQueueItemToDbInsert(item: SendQueueItem): RecruitmentQueueRo
 }
 
 export function historyRowToContactHistoryItem(row: RecruitmentContactHistoryRow): ContactHistoryItem {
+  const rawHistory = row.raw as Partial<ContactHistoryItem> | undefined;
+  const rawOrigem = rawHistory?.origem === "WhatsApp" || rawHistory?.origem === "Simulacao" ? rawHistory.origem : undefined;
+
   return {
     nome: row.nome,
     telefone: row.telefone,
@@ -121,7 +124,10 @@ export function historyRowToContactHistoryItem(row: RecruitmentContactHistoryRow
     data_apresentacao: row.data_apresentacao,
     status: row.status,
     mensagem: row.mensagem,
-    data: row.data || row.data_envio
+    data: row.data || row.data_envio,
+    origem: rawOrigem,
+    messageId: typeof rawHistory?.messageId === "string" ? rawHistory.messageId : undefined,
+    envioDateKey: typeof rawHistory?.envioDateKey === "string" ? rawHistory.envioDateKey : undefined
   };
 }
 

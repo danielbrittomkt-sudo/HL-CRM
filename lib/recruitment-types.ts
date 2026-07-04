@@ -32,6 +32,7 @@ export type ContactHistoryItem = {
   data: string;
   origem?: "WhatsApp" | "Simulacao";
   messageId?: string;
+  envioDateKey?: string;
 };
 
 export type RecruitmentSettings = {
