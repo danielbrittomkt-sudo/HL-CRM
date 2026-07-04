@@ -653,7 +653,8 @@ export default function Page() {
         },
         body: JSON.stringify({
           telefone: queueItem.telefone,
-          mensagem: "Mensagem enviada pelo CRM Home Life."
+          mensagem: "Mensagem enviada pelo CRM Home Life.",
+          nome: queueItem.nome
         })
       });
       const result = (await response.json()) as {

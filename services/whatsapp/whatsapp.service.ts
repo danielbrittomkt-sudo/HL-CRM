@@ -1,6 +1,7 @@
 type SendWhatsAppMessageInput = {
   telefone: string;
   mensagem: string;
+  nome?: string;
 };
 
 type SendWhatsAppMessageResult = {
@@ -40,7 +41,24 @@ function normalizeWhatsAppPhone(telefone: string) {
   return digits.startsWith("55") ? digits : `55${digits}`;
 }
 
-function buildTemplatePayload(templateName: string, templateLanguage: string): WhatsAppTemplatePayload {
+function buildTemplatePayload(templateName: string, templateLanguage: string, nome: string): WhatsAppTemplatePayload {
+  if (templateName === "h_crm_rh_2") {
+    return {
+      name: templateName,
+      language: {
+        code: templateLanguage
+      },
+      components: [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: nome }
+          ]
+        }
+      ]
+    };
+  }
+
   if (templateName === "convite_apresentacao_corretor") {
     return {
       name: templateName,
@@ -68,11 +86,12 @@ function buildTemplatePayload(templateName: string, templateLanguage: string): W
   };
 }
 
-export async function sendWhatsAppMessage({ telefone, mensagem }: SendWhatsAppMessageInput): Promise<SendWhatsAppMessageResult> {
+export async function sendWhatsAppMessage({ telefone, mensagem, nome }: SendWhatsAppMessageInput): Promise<SendWhatsAppMessageResult> {
   const dryRun = process.env.WHATSAPP_DRY_RUN !== "false";
   const normalizedPhone = normalizeWhatsAppPhone(telefone);
   const templateName = process.env.WHATSAPP_TEMPLATE_NAME || "hello_world";
   const templateLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en_US";
+  const candidateName = nome?.trim() || "candidato";
 
   if (dryRun) {
     console.log("WHATSAPP_DRY_RUN_OK", { to: normalizedPhone, messageLength: mensagem.length });
@@ -112,7 +131,7 @@ export async function sendWhatsAppMessage({ telefone, mensagem }: SendWhatsAppMe
         messaging_product: "whatsapp",
         to: normalizedPhone,
         type: "template",
-        template: buildTemplatePayload(templateName, templateLanguage)
+        template: buildTemplatePayload(templateName, templateLanguage, candidateName)
       })
     });
 
