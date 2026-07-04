@@ -146,11 +146,17 @@ export function contactHistoryItemToDbInsert(item: ContactHistoryItem): Recruitm
 }
 
 export function settingsRowToRecruitmentSettings(row: RecruitmentSettingsRow): RecruitmentSettings {
+  const rawSettings = row.raw as Partial<RecruitmentSettings> | undefined;
+
   return {
     quantidadePorDia: row.quantidade_por_dia,
     horarioEnvio: row.horario_envio,
     diasApresentacao: row.dias_apresentacao,
-    horarioApresentacao: row.horario_apresentacao
+    horarioApresentacao: row.horario_apresentacao,
+    limiteDiario: rawSettings?.limiteDiario ?? row.quantidade_por_dia,
+    limiteSemanal: rawSettings?.limiteSemanal ?? 50,
+    limiteMensal: rawSettings?.limiteMensal ?? 200,
+    orcamentoMensalWhatsApp: rawSettings?.orcamentoMensalWhatsApp ?? 100
   };
 }
 

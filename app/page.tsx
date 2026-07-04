@@ -405,6 +405,15 @@ function normalizeRecruitmentSettings(settings: RecruitmentSettingsType): Recrui
   };
 }
 
+function normalizeQueuePhone(telefone: string) {
+  return telefone.replace(/\D/g, "");
+}
+
+function isValidQueuePhone(telefone: string) {
+  const normalizedPhone = normalizeQueuePhone(telefone);
+  return normalizedPhone.length >= 12 && normalizedPhone.length <= 13 && normalizedPhone.startsWith("55");
+}
+
 export default function Page() {
   const [active, setActive] = useState<ModuleKey>("dashboard-recrutamento");
   const [importRows, setImportRows] = useState<RecruitmentCandidate[]>(importedCandidates);
@@ -559,7 +568,25 @@ export default function Page() {
   }
 
   async function handleSendQueueItemWhatsApp(queueItem: SendQueueItem) {
-    if (queueItem.status_envio !== "pendente_envio" || sendingQueueItemId !== null) return;
+    if (sendingQueueItemId !== null) return;
+
+    if (queueItem.status_envio === "mensagem_enviada") {
+      setWhatsappSendFeedback({ type: "error", message: "Este candidato ja esta marcado como enviado." });
+      return;
+    }
+
+    if (!queueItem.telefone.trim()) {
+      setWhatsappSendFeedback({ type: "error", message: "Este candidato nao possui telefone cadastrado." });
+      return;
+    }
+
+    if (!isValidQueuePhone(queueItem.telefone)) {
+      setWhatsappSendFeedback({ type: "error", message: "Telefone invalido. Use DDI 55 + DDD + numero antes de enviar." });
+      return;
+    }
+
+    const confirmed = window.confirm("Tem certeza que deseja enviar WhatsApp para este candidato?");
+    if (!confirmed) return;
 
     setSendingQueueItemId(queueItem.id);
     setWhatsappSendFeedback(null);
@@ -603,8 +630,10 @@ export default function Page() {
         data_envio: dataEnvio,
         data_apresentacao: `${queueItem.apresentacao} ${queueItem.horario_apresentacao}`,
         status: "mensagem_enviada",
-        mensagem: queueItem.mensagem,
-        data: dataEnvio
+        mensagem: result.messageId ? `${queueItem.mensagem} Origem: WhatsApp. MessageId: ${result.messageId}` : `${queueItem.mensagem} Origem: WhatsApp.`,
+        data: dataEnvio,
+        origem: "WhatsApp",
+        messageId: result.messageId
       };
 
       setGeneratedQueue(updatedQueue);
@@ -1097,7 +1126,7 @@ export default function Page() {
           }
         />
         <div className="border-t border-line px-5 py-3 text-sm text-steel">
-          Envio real unitario via WhatsApp usando o template/configuracao atual. Enquanto o template oficial esta em analise, o envio usa hello_world.
+          Modo teste: o envio atual usa o template configurado na Meta. Aguarde aprovacao do modelo oficial da Home Life.
           {whatsappSendFeedback ? (
             <p className={`mt-2 font-semibold ${whatsappSendFeedback.type === "success" ? "text-success" : "text-danger"}`}>
               {whatsappSendFeedback.message}
@@ -1134,7 +1163,7 @@ export default function Page() {
                     <button
                       type="button"
                       onClick={() => handleSendQueueItemWhatsApp(item)}
-                      disabled={item.status_envio !== "pendente_envio" || sendingQueueItemId !== null}
+                      disabled={item.status_envio !== "pendente_envio" || sendingQueueItemId !== null || !isValidQueuePhone(item.telefone)}
                       className="h-9 rounded-md border border-line bg-white px-3 text-xs font-semibold text-navy transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {sendingQueueItemId === item.id ? "Enviando..." : item.status_envio === "mensagem_enviada" ? "Enviado" : "Enviar WhatsApp"}
@@ -1162,6 +1191,8 @@ export default function Page() {
               <span className="mt-3 inline-flex rounded-md bg-mist px-2 py-1 text-xs font-semibold text-navy">{item.status}</span>
               <p className="mt-3 text-xs text-steel">Envio: {item.data_envio}</p>
               <p className="mt-1 text-xs text-steel">Apresentacao: {item.data_apresentacao}</p>
+              {item.origem ? <p className="mt-1 text-xs text-steel">Origem: {item.origem}</p> : null}
+              {item.messageId ? <p className="mt-1 break-all text-xs text-steel">MessageId: {item.messageId}</p> : null}
               <p className="mt-3 text-xs leading-5 text-steel">{item.mensagem}</p>
             </div>
           ))}

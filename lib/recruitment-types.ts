@@ -30,6 +30,8 @@ export type ContactHistoryItem = {
   status: "mensagem_enviada" | "erro_envio" | "confirmado" | "nao_respondeu";
   mensagem: string;
   data: string;
+  origem?: "WhatsApp" | "Simulacao";
+  messageId?: string;
 };
 
 export type RecruitmentSettings = {
@@ -37,4 +39,8 @@ export type RecruitmentSettings = {
   horarioEnvio: string;
   diasApresentacao: string[];
   horarioApresentacao: string;
+  limiteDiario: number;
+  limiteSemanal: number;
+  limiteMensal: number;
+  orcamentoMensalWhatsApp: number;
 };

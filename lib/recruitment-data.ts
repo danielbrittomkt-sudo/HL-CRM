@@ -16,10 +16,14 @@ export const candidateList: RecruitmentCandidate[] = [
 ];
 
 export const recruitmentSettings: RecruitmentSettings = {
-  quantidadePorDia: 50,
+  quantidadePorDia: 10,
   horarioEnvio: "07:00",
   diasApresentacao: ["Terca", "Quinta"],
-  horarioApresentacao: "14:00"
+  horarioApresentacao: "14:00",
+  limiteDiario: 10,
+  limiteSemanal: 50,
+  limiteMensal: 200,
+  orcamentoMensalWhatsApp: 100
 };
 
 export const sendQueue: SendQueueItem[] = Array.from({ length: recruitmentSettings.quantidadePorDia }, (_, index) => {
