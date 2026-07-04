@@ -462,6 +462,8 @@ export default function Page() {
   const whatsappTodayDateKey = getLocalDateKey();
   const whatsappDailyLimit = getWhatsAppDailyLimit(recruitmentSettingsState);
   const whatsappSendsToday = contactHistoryRows.filter((item) => isWhatsAppHistoryForDate(item, whatsappTodayDateKey)).length;
+  const whatsappHistoryRows = contactHistoryRows.filter((item) => item.origem === "WhatsApp");
+  const lastWhatsAppSend = whatsappHistoryRows[0];
 
   const folderRows = useMemo(
     () =>
@@ -1257,6 +1259,16 @@ export default function Page() {
   }
 
   function RecruitmentSettings() {
+    const whatsappStatusItems = [
+      { label: "Modo", value: "Produção" },
+      { label: "Template ativo", value: "Template ativo configurado na Vercel." },
+      { label: "Idioma do template", value: "Configurado na Vercel." },
+      { label: "Limite diário configurado", value: String(whatsappDailyLimit) },
+      { label: "Envios WhatsApp hoje", value: `${whatsappSendsToday} / ${whatsappDailyLimit}` },
+      { label: "Último envio WhatsApp", value: lastWhatsAppSend ? `${lastWhatsAppSend.nome} - ${lastWhatsAppSend.data_envio}` : "Nenhum envio registrado" },
+      { label: "Status geral", value: whatsappDailyLimit >= 1 ? "Configurado" : "Pendente" }
+    ];
+
     return (
       <Card>
         <SectionTitle icon={KeyRound} title="Configuracoes de envio" />
@@ -1312,6 +1324,22 @@ export default function Page() {
               />
             </label>
           ))}
+        </div>
+        <div className="border-t border-line p-5">
+          <div className="mb-4">
+            <p className="text-sm font-semibold text-ink">Status WhatsApp</p>
+            <p className="mt-1 text-xs text-steel">
+              O template oficial da Home Life ainda deve ser ativado somente após aprovação na Meta.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {whatsappStatusItems.map((item) => (
+              <div key={item.label} className="rounded-lg border border-line p-4">
+                <p className="text-xs font-medium uppercase tracking-normal text-steel">{item.label}</p>
+                <p className="mt-2 break-words text-sm font-semibold text-ink">{item.value}</p>
+              </div>
+            ))}
+          </div>
         </div>
         <div className="flex flex-wrap gap-3 border-t border-line p-5">
           <button type="button" onClick={handleSaveRecruitmentSettings} className="h-10 rounded-md bg-navy px-4 text-sm font-semibold text-white transition hover:bg-ocean">
