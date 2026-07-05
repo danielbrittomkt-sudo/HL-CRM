@@ -1933,15 +1933,12 @@ export default function Page() {
       importRows.filter((candidate) => getCandidateFunnelStatus(candidate) === status).length;
     const todayKey = getLocalDateKey();
     const futurePresentations = presentationRows.filter((presentation) => presentation.status === "agendada" && presentation.data >= todayKey).length;
-    const scheduledPresentationCandidates = presentationRows.reduce((total, presentation) => total + presentation.candidates.length, 0);
-    const attendedPresentationCandidates = presentationRows.reduce(
-      (total, presentation) => total + presentation.candidates.filter((candidate) => candidate.statusParticipacao === "compareceu").length,
-      0
+    const whatsappSentToday = contactHistoryRows.filter((item) => isWhatsAppHistoryForDate(item, todayKey)).length;
+    const presentationsToday = presentationRows.filter((presentation) => presentation.data === todayKey).length;
+    const followUpToday = importRows.filter((candidate) =>
+      ["WhatsApp enviado", "Respondeu", "Confirmou interesse", "Não compareceu"].includes(getCandidateFunnelStatus(candidate))
     );
-    const missedPresentationCandidates = presentationRows.reduce(
-      (total, presentation) => total + presentation.candidates.filter((candidate) => candidate.statusParticipacao === "nao_compareceu").length,
-      0
-    );
+    const whatsappDailyLimit = getWhatsAppDailyLimit(recruitmentSettingsState);
 
     return (
       <>
@@ -1955,35 +1952,31 @@ export default function Page() {
             {isRecruitmentRefreshing ? "Atualizando..." : "Atualizar dados"}
           </button>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           <Metric label="Total de candidatos" value={String(importRows.length)} icon={Users} detail="Base carregada" />
-          <Metric label="Apresentações futuras" value={String(futurePresentations)} icon={Target} detail="Turmas agendadas" />
-          <Metric label="Candidatos agendados" value={String(scheduledPresentationCandidates)} icon={Users} detail="Vinculados a turmas" />
-          <Metric label="Compareceram em turmas" value={String(attendedPresentationCandidates)} icon={Gauge} detail="Controle de apresentacao" />
-          <Metric label="Nao compareceram em turmas" value={String(missedPresentationCandidates)} icon={FileText} detail="Acompanhamento" />
           <Metric label="WhatsApp enviados" value={String(countFunnelStatus("WhatsApp enviado"))} icon={BadgeCheck} detail="Primeiro contato feito" />
-          <Metric label="Responderam" value={String(countFunnelStatus("Respondeu"))} icon={Activity} detail="Retorno manual registrado" />
-          <Metric label="Confirmaram interesse" value={String(countFunnelStatus("Confirmou interesse"))} icon={CheckCircle2} detail="Avancar acompanhamento" />
-          <Metric label="Apresentações agendadas" value={String(countFunnelStatus("Apresentação agendada"))} icon={Target} detail="Agenda de recrutamento" />
-          <Metric label="Compareceram" value={String(countFunnelStatus("Compareceu"))} icon={Gauge} detail="Participaram da apresentacao" />
-          <Metric label="Não compareceram" value={String(countFunnelStatus("Não compareceu"))} icon={FileText} detail="Reagendar ou encerrar" />
-          <Metric label="Sem interesse" value={String(countFunnelStatus("Sem interesse"))} icon={Filter} detail="Descartes manuais" />
+          <Metric label="Confirmaram interesse" value={String(countFunnelStatus("Confirmou interesse"))} icon={CheckCircle2} detail="Avançar acompanhamento" />
+          <Metric label="Apresentações futuras" value={String(futurePresentations)} icon={Target} detail="Turmas agendadas" />
+          <Metric label="Compareceram" value={String(countFunnelStatus("Compareceu"))} icon={Gauge} detail="Participaram da apresentação" />
           <Metric label="Telefone inválido" value={String(countFunnelStatus("Telefone inválido"))} icon={FileText} detail="Corrigir contato" />
         </div>
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <Card>
-            <SectionTitle icon={Users} title="Candidatos recentes" />
-            <CandidateTable rows={importRows.slice(0, 5)} />
-          </Card>
-          <Card>
-            <SectionTitle icon={Gauge} title="Ritmo operacional" />
-            <div className="space-y-3 p-5">
-              <MiniProgress label="Base higienizada" value={78} />
-              <MiniProgress label="Fila preparada" value={100} />
-              <MiniProgress label="Retornos confirmados" value={42} />
+        <Card>
+          <SectionTitle icon={Activity} title="Resumo operacional" />
+          <div className="grid gap-4 p-5 md:grid-cols-3">
+            <div className="rounded-lg border border-line bg-mist/60 p-4">
+              <p className="text-xs font-semibold uppercase tracking-normal text-steel">Para follow-up hoje</p>
+              <p className="mt-2 text-2xl font-semibold text-ink">{followUpToday.length}</p>
             </div>
-          </Card>
-        </div>
+            <div className="rounded-lg border border-line bg-mist/60 p-4">
+              <p className="text-xs font-semibold uppercase tracking-normal text-steel">Apresentações de hoje</p>
+              <p className="mt-2 text-2xl font-semibold text-ink">{presentationsToday}</p>
+            </div>
+            <div className="rounded-lg border border-line bg-mist/60 p-4">
+              <p className="text-xs font-semibold uppercase tracking-normal text-steel">Limite WhatsApp usado hoje</p>
+              <p className="mt-2 text-2xl font-semibold text-ink">{whatsappSentToday} / {whatsappDailyLimit}</p>
+            </div>
+          </div>
+        </Card>
       </>
     );
   }
