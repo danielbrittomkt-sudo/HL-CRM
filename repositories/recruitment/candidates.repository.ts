@@ -30,8 +30,9 @@ export async function findRecruitmentCandidateByNormalizedPhone(normalizedPhone:
 export async function upsertRecruitmentCandidates(candidates: RecruitmentCandidate[]) {
   const supabase = getSupabaseClient();
   const rows = candidates.map(recruitmentCandidateToDbInsert);
-  const results = await Promise.all(rows.map((row) => supabase.from(tableName).insert(row)));
-  const error = results.find((result) => result.error && result.error.code !== "23505")?.error;
+  const { error } = await supabase.from(tableName).upsert(rows, {
+    onConflict: "telefone_normalizado"
+  });
 
   if (error) throw error;
 

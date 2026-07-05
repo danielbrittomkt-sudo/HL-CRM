@@ -47,7 +47,7 @@ import type { RecruitmentImportSummary } from "@/lib/recruitment-import";
 import { candidateList, contactHistory, importedCandidates, recruitmentSettings as defaultRecruitmentSettings, sendQueue } from "@/lib/recruitment-data";
 import { generateTodaySendQueue } from "@/lib/recruitment-scheduler";
 import { clearRecruitmentStorage, loadRecruitmentStorage, saveRecruitmentStorage } from "@/lib/recruitment-storage";
-import type { ContactHistoryItem, RecruitmentCandidate, RecruitmentSettings as RecruitmentSettingsType, SendQueueItem } from "@/lib/recruitment-types";
+import type { ContactHistoryItem, RecruitmentCandidate, RecruitmentFunnelStatus, RecruitmentSettings as RecruitmentSettingsType, SendQueueItem } from "@/lib/recruitment-types";
 import { getCandidates, saveCandidates } from "@/services/recruitment/candidates.service";
 import { getContactHistory, saveContactHistory } from "@/services/recruitment/history.service";
 import { getQueue, saveQueue } from "@/services/recruitment/queue.service";
@@ -348,6 +348,56 @@ function ClientTable({ rows }: { rows: ClientRow[] }) {
 const brokerRows = brokers.map((broker) => ({ ...broker, analise: analyzeBroker(broker) })).sort((a, b) => b.analise.ipc - a.analise.ipc);
 const clientRows = clients.map((client) => ({ ...client, cpf: maskCpf(client.cpf), analise: analyzeClient(client) })).sort((a, b) => b.analise.ipc - a.analise.ipc);
 
+const recruitmentFunnelStatuses: RecruitmentFunnelStatus[] = [
+  "Novo candidato",
+  "Na fila de envio",
+  "WhatsApp enviado",
+  "Respondeu",
+  "Confirmou interesse",
+  "Apresentação agendada",
+  "Compareceu",
+  "Não compareceu",
+  "Sem interesse",
+  "Telefone inválido"
+];
+
+const candidateFunnelFilters: Array<"Todos" | RecruitmentFunnelStatus> = [
+  "Todos",
+  "WhatsApp enviado",
+  "Respondeu",
+  "Confirmou interesse",
+  "Apresentação agendada",
+  "Compareceu",
+  "Não compareceu",
+  "Sem interesse",
+  "Telefone inválido"
+];
+
+function getCandidateKey(candidate: Pick<RecruitmentCandidate, "telefone" | "email" | "nome">) {
+  return normalizeQueuePhone(candidate.telefone) || candidate.email.trim().toLowerCase() || candidate.nome.trim().toLowerCase();
+}
+
+function mergeStoredCandidateFunnel(candidates: RecruitmentCandidate[], storedCandidates: RecruitmentCandidate[] | null) {
+  if (!storedCandidates?.length) return candidates;
+  const storedByKey = new Map(storedCandidates.map((candidate) => [getCandidateKey(candidate), candidate]));
+
+  return candidates.map((candidate) => {
+    const storedCandidate = storedByKey.get(getCandidateKey(candidate));
+    return storedCandidate?.funilStatus ? { ...candidate, funilStatus: storedCandidate.funilStatus } : candidate;
+  });
+}
+
+function getHistoryMergeKey(item: ContactHistoryItem) {
+  return `${normalizeQueuePhone(item.telefone)}-${item.data_envio}-${item.status}-${item.funilStatus || ""}-${item.messageId || ""}`;
+}
+
+function mergeStoredHistory(supabaseHistory: ContactHistoryItem[], storedHistory: ContactHistoryItem[] | null) {
+  if (!storedHistory?.length) return supabaseHistory;
+  const knownKeys = new Set(supabaseHistory.map(getHistoryMergeKey));
+  const localOnlyHistory = storedHistory.filter((item) => !knownKeys.has(getHistoryMergeKey(item)));
+  return [...localOnlyHistory, ...supabaseHistory];
+}
+
 async function loadRecruitmentDataSnapshot() {
   const stored = loadRecruitmentStorage();
   let nextCandidates = stored.candidates ?? importedCandidates;
@@ -357,7 +407,7 @@ async function loadRecruitmentDataSnapshot() {
 
   try {
     const supabaseCandidates = await getCandidates();
-    if (supabaseCandidates.length) nextCandidates = supabaseCandidates;
+    if (supabaseCandidates.length) nextCandidates = mergeStoredCandidateFunnel(supabaseCandidates, stored.candidates);
   } catch (error) {
     console.error("Falha ao carregar recruitment_candidates do Supabase. Usando localStorage.", error);
   }
@@ -371,7 +421,7 @@ async function loadRecruitmentDataSnapshot() {
 
   try {
     const supabaseHistory = await getContactHistory();
-    if (supabaseHistory.length) nextHistory = supabaseHistory;
+    if (supabaseHistory.length) nextHistory = mergeStoredHistory(supabaseHistory, stored.history);
   } catch (error) {
     console.error("Falha ao carregar recruitment_contact_history do Supabase. Usando localStorage.", error);
   }
@@ -456,6 +506,7 @@ export default function Page() {
   const [isRecruitmentRefreshing, setIsRecruitmentRefreshing] = useState(false);
   const [sendingQueueItemId, setSendingQueueItemId] = useState<number | null>(null);
   const [whatsappSendFeedback, setWhatsappSendFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [candidateFunnelFilter, setCandidateFunnelFilter] = useState<"Todos" | RecruitmentFunnelStatus>("Todos");
   const latest = conversionByMonth[conversionByMonth.length - 1];
   const conversionRate = Math.round((latest.vendas / latest.leads) * 1000) / 10;
   const title = titles[active];
@@ -555,6 +606,14 @@ export default function Page() {
 
   async function handleGenerateQueue() {
     const queue = generateTodaySendQueue(importRows, recruitmentSettingsState);
+    const queuePhones = new Set(queue.map((item) => normalizeQueuePhone(item.telefone)));
+    setImportRows((current) =>
+      current.map((candidate) =>
+        queuePhones.has(normalizeQueuePhone(candidate.telefone)) && !candidate.funilStatus
+          ? { ...candidate, funilStatus: "Na fila de envio" }
+          : candidate
+      )
+    );
     setGeneratedQueue(queue);
     try {
       await saveQueue(queue);
@@ -694,6 +753,13 @@ export default function Page() {
       };
 
       setGeneratedQueue(updatedQueue);
+      setImportRows((current) =>
+        current.map((candidate) =>
+          normalizeQueuePhone(candidate.telefone) === normalizeQueuePhone(queueItem.telefone)
+            ? { ...candidate, funilStatus: "WhatsApp enviado" }
+            : candidate
+        )
+      );
       setContactHistoryRows((current) => [historyItem, ...current]);
       setWhatsappSendFeedback({
         type: "success",
@@ -718,6 +784,56 @@ export default function Page() {
       });
     } finally {
       setSendingQueueItemId(null);
+    }
+  }
+
+  function getCandidateFunnelStatus(candidate: RecruitmentCandidate): RecruitmentFunnelStatus {
+    if (candidate.funilStatus) return candidate.funilStatus;
+    if (candidate.status === "Invalido") return "Telefone inválido";
+
+    const candidatePhone = normalizeQueuePhone(candidate.telefone);
+    const queueItem = generatedQueue.find((item) => normalizeQueuePhone(item.telefone) === candidatePhone);
+    if (queueItem?.status_envio === "mensagem_enviada") return "WhatsApp enviado";
+    if (whatsappHistoryRows.some((item) => normalizeQueuePhone(item.telefone) === candidatePhone)) return "WhatsApp enviado";
+    if (queueItem) return "Na fila de envio";
+
+    return "Novo candidato";
+  }
+
+  async function handleCandidateFunnelStatusChange(candidate: RecruitmentCandidate, nextStatus: RecruitmentFunnelStatus) {
+    const now = new Date();
+    const dataEnvio = now.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    const sourceRows = importRows.length ? importRows : candidateList;
+    const candidateKey = getCandidateKey(candidate);
+    const updatedCandidates = sourceRows.map((item) =>
+      getCandidateKey(item) === candidateKey ? { ...item, funilStatus: nextStatus } : item
+    );
+    const historyItem: ContactHistoryItem = {
+      nome: candidate.nome,
+      telefone: candidate.telefone,
+      fonte: candidate.fonte,
+      data_envio: dataEnvio,
+      data_apresentacao: "-",
+      status: "alteracao_funil",
+      mensagem: `Status do funil alterado manualmente para ${nextStatus}.`,
+      data: dataEnvio,
+      origem: "Manual",
+      funilStatus: nextStatus
+    };
+
+    setImportRows(updatedCandidates);
+    setContactHistoryRows((current) => [historyItem, ...current]);
+
+    try {
+      await saveCandidates(updatedCandidates);
+    } catch (error) {
+      console.error("Falha ao salvar status do funil no Supabase. Mantendo fluxo localStorage.", error);
+    }
+
+    try {
+      await saveContactHistory([historyItem]);
+    } catch (error) {
+      console.error("Falha ao salvar alteracao manual do funil no Supabase. Mantendo fluxo localStorage.", error);
     }
   }
 
@@ -1041,10 +1157,10 @@ export default function Page() {
     );
   }
 
-  function CandidateTable({ rows }: { rows: RecruitmentCandidate[] }) {
+  function CandidateTable({ rows, editableFunnel = false }: { rows: RecruitmentCandidate[]; editableFunnel?: boolean }) {
     return (
       <div className="overflow-x-auto thin-scrollbar">
-        <table className="w-full min-w-[920px] text-left text-sm">
+        <table className="w-full min-w-[1120px] text-left text-sm">
           <thead className="bg-mist text-xs uppercase tracking-normal text-steel">
             <tr>
               <th className="px-5 py-3">Nome</th>
@@ -1054,24 +1170,44 @@ export default function Page() {
               <th className="px-5 py-3">Cargo</th>
               <th className="px-5 py-3">Fonte</th>
               <th className="px-5 py-3">Status</th>
+              <th className="px-5 py-3">Funil</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {rows.map((candidate) => (
-              <tr key={`${candidate.email}-${candidate.telefone}`}>
-                <td className="px-5 py-4 font-semibold text-ink">{candidate.nome}</td>
-                <td className="px-5 py-4">{candidate.telefone}</td>
-                <td className="px-5 py-4">{candidate.email}</td>
-                <td className="px-5 py-4">{candidate.cidade}</td>
-                <td className="px-5 py-4">{candidate.cargo}</td>
-                <td className="px-5 py-4">{candidate.fonte}</td>
-                <td className="px-5 py-4">
-                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${candidate.status === "Valido" ? "bg-success text-white" : candidate.status === "Duplicado" ? "bg-danger text-white" : "bg-warning text-white"}`}>
-                    {candidate.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
+            {rows.map((candidate) => {
+              const funnelStatus = getCandidateFunnelStatus(candidate);
+
+              return (
+                <tr key={`${candidate.email}-${candidate.telefone}`}>
+                  <td className="px-5 py-4 font-semibold text-ink">{candidate.nome}</td>
+                  <td className="px-5 py-4">{candidate.telefone}</td>
+                  <td className="px-5 py-4">{candidate.email}</td>
+                  <td className="px-5 py-4">{candidate.cidade}</td>
+                  <td className="px-5 py-4">{candidate.cargo}</td>
+                  <td className="px-5 py-4">{candidate.fonte}</td>
+                  <td className="px-5 py-4">
+                    <span className={`rounded-md px-2 py-1 text-xs font-semibold ${candidate.status === "Valido" ? "bg-success text-white" : candidate.status === "Duplicado" ? "bg-danger text-white" : "bg-warning text-white"}`}>
+                      {candidate.status}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4">
+                    {editableFunnel ? (
+                      <select
+                        className="h-9 min-w-[190px] rounded-md border border-line bg-white px-3 text-xs font-semibold text-navy outline-none"
+                        value={funnelStatus}
+                        onChange={(event) => handleCandidateFunnelStatusChange(candidate, event.target.value as RecruitmentFunnelStatus)}
+                      >
+                        {recruitmentFunnelStatuses.map((status) => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="rounded-md bg-mist px-2 py-1 text-xs font-semibold text-navy">{funnelStatus}</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -1079,9 +1215,8 @@ export default function Page() {
   }
 
   function RecruitmentDashboard() {
-    const validCandidates = importRows.filter((candidate) => candidate.status === "Valido").length;
-    const pendingMessages = generatedQueue.filter((item) => item.status_envio === "pendente_envio").length;
-    const sentMessages = contactHistoryRows.filter((item) => item.status === "mensagem_enviada").length;
+    const countFunnelStatus = (status: RecruitmentFunnelStatus) =>
+      importRows.filter((candidate) => getCandidateFunnelStatus(candidate) === status).length;
 
     return (
       <>
@@ -1095,13 +1230,15 @@ export default function Page() {
             {isRecruitmentRefreshing ? "Atualizando..." : "Atualizar dados"}
           </button>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-          <Metric label="Candidatos importados" value={String(importRows.length)} icon={Users} detail="Total recebido por planilhas" />
-          <Metric label="Candidatos validos" value={String(validCandidates)} icon={CheckCircle2} detail="Aptos para contato" />
-          <Metric label="Fila de hoje" value={String(generatedQueue.length)} icon={FileText} detail="Limite diario configurado" />
-          <Metric label="Mensagens pendentes" value={String(pendingMessages)} icon={Activity} detail="Aguardando envio" />
-          <Metric label="Mensagens enviadas" value={String(sentMessages)} icon={BadgeCheck} detail="Contatos do ciclo" />
-          <Metric label="Proxima apresentacao" value="14:00" icon={Target} detail="Terca e quinta" />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Metric label="Total de candidatos" value={String(importRows.length)} icon={Users} detail="Base carregada" />
+          <Metric label="WhatsApp enviados" value={String(countFunnelStatus("WhatsApp enviado"))} icon={BadgeCheck} detail="Primeiro contato feito" />
+          <Metric label="Responderam" value={String(countFunnelStatus("Respondeu"))} icon={Activity} detail="Retorno manual registrado" />
+          <Metric label="Confirmaram interesse" value={String(countFunnelStatus("Confirmou interesse"))} icon={CheckCircle2} detail="Avancar acompanhamento" />
+          <Metric label="Apresentações agendadas" value={String(countFunnelStatus("Apresentação agendada"))} icon={Target} detail="Agenda de recrutamento" />
+          <Metric label="Compareceram" value={String(countFunnelStatus("Compareceu"))} icon={Gauge} detail="Participaram da apresentacao" />
+          <Metric label="Não compareceram" value={String(countFunnelStatus("Não compareceu"))} icon={FileText} detail="Reagendar ou encerrar" />
+          <Metric label="Sem interesse" value={String(countFunnelStatus("Sem interesse"))} icon={Filter} detail="Descartes manuais" />
         </div>
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <Card>
@@ -1161,10 +1298,27 @@ export default function Page() {
   }
 
   function RecruitmentCandidates() {
+    const candidateRows = importRows.length ? importRows : candidateList;
+    const filteredCandidates = candidateFunnelFilter === "Todos"
+      ? candidateRows
+      : candidateRows.filter((candidate) => getCandidateFunnelStatus(candidate) === candidateFunnelFilter);
+
     return (
       <Card>
         <SectionTitle icon={Users} title="Lista de candidatos" />
-        <CandidateTable rows={importRows.length ? importRows : candidateList} />
+        <div className="flex flex-wrap gap-2 border-t border-line p-5">
+          {candidateFunnelFilters.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setCandidateFunnelFilter(filter)}
+              className={`h-9 rounded-md border px-3 text-xs font-semibold transition ${candidateFunnelFilter === filter ? "border-navy bg-navy text-white" : "border-line bg-white text-navy hover:border-gold"}`}
+            >
+              {filter}
+            </button>
+          ))}
+        </div>
+        <CandidateTable rows={filteredCandidates} editableFunnel />
       </Card>
     );
   }
@@ -1250,6 +1404,7 @@ export default function Page() {
               <p className="mt-3 text-xs text-steel">Envio: {item.data_envio}</p>
               <p className="mt-1 text-xs text-steel">Apresentacao: {item.data_apresentacao}</p>
               {item.origem ? <p className="mt-1 text-xs text-steel">Origem: {item.origem}</p> : null}
+              {item.funilStatus ? <p className="mt-1 text-xs font-semibold text-navy">Funil: {item.funilStatus}</p> : null}
               {item.messageId ? <p className="mt-1 break-all text-xs text-steel">MessageId: {item.messageId}</p> : null}
               <p className="mt-3 text-xs leading-5 text-steel">{item.mensagem}</p>
             </div>

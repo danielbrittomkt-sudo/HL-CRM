@@ -1,3 +1,15 @@
+export type RecruitmentFunnelStatus =
+  | "Novo candidato"
+  | "Na fila de envio"
+  | "WhatsApp enviado"
+  | "Respondeu"
+  | "Confirmou interesse"
+  | "Apresentação agendada"
+  | "Compareceu"
+  | "Não compareceu"
+  | "Sem interesse"
+  | "Telefone inválido";
+
 export type RecruitmentCandidate = {
   nome: string;
   telefone: string;
@@ -6,6 +18,7 @@ export type RecruitmentCandidate = {
   cargo: string;
   fonte: string;
   status: "Valido" | "Revisar" | "Duplicado" | "Invalido";
+  funilStatus?: RecruitmentFunnelStatus;
 };
 
 export type SendQueueItem = {
@@ -27,12 +40,13 @@ export type ContactHistoryItem = {
   fonte: string;
   data_envio: string;
   data_apresentacao: string;
-  status: "mensagem_enviada" | "erro_envio" | "confirmado" | "nao_respondeu";
+  status: "mensagem_enviada" | "erro_envio" | "confirmado" | "nao_respondeu" | "alteracao_funil";
   mensagem: string;
   data: string;
-  origem?: "WhatsApp" | "Simulacao";
+  origem?: "WhatsApp" | "Simulacao" | "Manual";
   messageId?: string;
   envioDateKey?: string;
+  funilStatus?: RecruitmentFunnelStatus;
 };
 
 export type RecruitmentSettings = {

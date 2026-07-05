@@ -10,6 +10,7 @@ export type RecruitmentCandidateRow = {
   cargo?: string | null;
   fonte?: string | null;
   status: RecruitmentCandidate["status"];
+  funil_status?: RecruitmentCandidate["funilStatus"] | null;
   import_batch_id?: string | null;
   raw?: Record<string, unknown>;
 };
@@ -61,6 +62,8 @@ export function normalizeEmail(value?: string | null) {
 }
 
 export function candidateRowToRecruitmentCandidate(row: RecruitmentCandidateRow): RecruitmentCandidate {
+  const rawCandidate = row.raw as Partial<RecruitmentCandidate> | undefined;
+
   return {
     nome: row.nome,
     telefone: row.telefone,
@@ -68,17 +71,30 @@ export function candidateRowToRecruitmentCandidate(row: RecruitmentCandidateRow)
     cidade: row.cidade || "",
     cargo: row.cargo || "",
     fonte: row.fonte || "",
-    status: row.status
+    status: row.status,
+    funilStatus: row.funil_status || rawCandidate?.funilStatus
   };
 }
 
 export function recruitmentCandidateToDbInsert(candidate: RecruitmentCandidate): RecruitmentCandidateRow {
-  return {
-    ...candidate,
+  const row: RecruitmentCandidateRow = {
+    nome: candidate.nome,
+    telefone: candidate.telefone,
+    email: candidate.email,
+    cidade: candidate.cidade,
+    cargo: candidate.cargo,
+    fonte: candidate.fonte,
+    status: candidate.status,
     telefone_normalizado: normalizePhone(candidate.telefone),
     email_normalizado: normalizeEmail(candidate.email),
     raw: candidate
   };
+
+  if (candidate.funilStatus) {
+    row.funil_status = candidate.funilStatus;
+  }
+
+  return row;
 }
 
 export function queueRowToSendQueueItem(row: RecruitmentQueueRow, index = 0): SendQueueItem {
@@ -114,7 +130,7 @@ export function sendQueueItemToDbInsert(item: SendQueueItem): RecruitmentQueueRo
 
 export function historyRowToContactHistoryItem(row: RecruitmentContactHistoryRow): ContactHistoryItem {
   const rawHistory = row.raw as Partial<ContactHistoryItem> | undefined;
-  const rawOrigem = rawHistory?.origem === "WhatsApp" || rawHistory?.origem === "Simulacao" ? rawHistory.origem : undefined;
+  const rawOrigem = rawHistory?.origem === "WhatsApp" || rawHistory?.origem === "Simulacao" || rawHistory?.origem === "Manual" ? rawHistory.origem : undefined;
 
   return {
     nome: row.nome,
@@ -127,7 +143,8 @@ export function historyRowToContactHistoryItem(row: RecruitmentContactHistoryRow
     data: row.data || row.data_envio,
     origem: rawOrigem,
     messageId: typeof rawHistory?.messageId === "string" ? rawHistory.messageId : undefined,
-    envioDateKey: typeof rawHistory?.envioDateKey === "string" ? rawHistory.envioDateKey : undefined
+    envioDateKey: typeof rawHistory?.envioDateKey === "string" ? rawHistory.envioDateKey : undefined,
+    funilStatus: rawHistory?.funilStatus
   };
 }
 
