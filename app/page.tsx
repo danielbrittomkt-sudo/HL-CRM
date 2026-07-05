@@ -363,6 +363,8 @@ const recruitmentFunnelStatuses: RecruitmentFunnelStatus[] = [
 
 const candidateFunnelFilters: Array<"Todos" | RecruitmentFunnelStatus> = [
   "Todos",
+  "Novo candidato",
+  "Na fila de envio",
   "WhatsApp enviado",
   "Respondeu",
   "Confirmou interesse",
@@ -372,6 +374,25 @@ const candidateFunnelFilters: Array<"Todos" | RecruitmentFunnelStatus> = [
   "Sem interesse",
   "Telefone inválido"
 ];
+
+const candidateQuickFunnelActions: RecruitmentFunnelStatus[] = [
+  "Respondeu",
+  "Confirmou interesse",
+  "Apresentação agendada",
+  "Compareceu",
+  "Não compareceu",
+  "Sem interesse",
+  "Telefone inválido"
+];
+
+function getFunnelStatusClass(status: RecruitmentFunnelStatus) {
+  if (status === "Confirmou interesse") return "bg-success/10 text-success";
+  if (status === "Apresentação agendada") return "bg-gold/15 text-navy";
+  if (status === "Compareceu") return "bg-navy text-white";
+  if (status === "Sem interesse") return "bg-danger/10 text-danger";
+  if (status === "Telefone inválido") return "bg-danger/10 text-danger";
+  return "bg-mist text-navy";
+}
 
 function getCandidateKey(candidate: Pick<RecruitmentCandidate, "telefone" | "email" | "nome">) {
   return normalizeQueuePhone(candidate.telefone) || candidate.email.trim().toLowerCase() || candidate.nome.trim().toLowerCase();
@@ -810,6 +831,8 @@ export default function Page() {
   }
 
   async function handleCandidateFunnelStatusChange(candidate: RecruitmentCandidate, nextStatus: RecruitmentFunnelStatus) {
+    if (getCandidateFunnelStatus(candidate) === nextStatus) return;
+
     const now = new Date();
     const dataEnvio = now.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
     const sourceRows = importRows.length ? importRows : candidateList;
@@ -1169,7 +1192,7 @@ export default function Page() {
   function CandidateTable({ rows, editableFunnel = false }: { rows: RecruitmentCandidate[]; editableFunnel?: boolean }) {
     return (
       <div className="overflow-x-auto thin-scrollbar">
-        <table className="w-full min-w-[1120px] text-left text-sm">
+        <table className="w-full min-w-[1420px] text-left text-sm">
           <thead className="bg-mist text-xs uppercase tracking-normal text-steel">
             <tr>
               <th className="px-5 py-3">Nome</th>
@@ -1180,6 +1203,7 @@ export default function Page() {
               <th className="px-5 py-3">Fonte</th>
               <th className="px-5 py-3">Status</th>
               <th className="px-5 py-3">Funil</th>
+              {editableFunnel ? <th className="px-5 py-3">Ações rápidas</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -1201,19 +1225,45 @@ export default function Page() {
                   </td>
                   <td className="px-5 py-4">
                     {editableFunnel ? (
-                      <select
-                        className="h-9 min-w-[190px] rounded-md border border-line bg-white px-3 text-xs font-semibold text-navy outline-none"
-                        value={funnelStatus}
-                        onChange={(event) => handleCandidateFunnelStatusChange(candidate, event.target.value as RecruitmentFunnelStatus)}
-                      >
-                        {recruitmentFunnelStatuses.map((status) => (
-                          <option key={status} value={status}>{status}</option>
-                        ))}
-                      </select>
+                      <div className="space-y-2">
+                        <select
+                          className="h-9 min-w-[190px] rounded-md border border-line bg-white px-3 text-xs font-semibold text-navy outline-none"
+                          value={funnelStatus}
+                          onChange={(event) => handleCandidateFunnelStatusChange(candidate, event.target.value as RecruitmentFunnelStatus)}
+                        >
+                          {recruitmentFunnelStatuses.map((status) => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
+                        </select>
+                        <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${getFunnelStatusClass(funnelStatus)}`}>
+                          {funnelStatus}
+                        </span>
+                      </div>
                     ) : (
-                      <span className="rounded-md bg-mist px-2 py-1 text-xs font-semibold text-navy">{funnelStatus}</span>
+                      <span className={`rounded-md px-2 py-1 text-xs font-semibold ${getFunnelStatusClass(funnelStatus)}`}>{funnelStatus}</span>
                     )}
                   </td>
+                  {editableFunnel ? (
+                    <td className="px-5 py-4">
+                      <div className="flex max-w-[420px] flex-wrap gap-2">
+                        {candidateQuickFunnelActions.map((status) => (
+                          <button
+                            key={status}
+                            type="button"
+                            onClick={() => handleCandidateFunnelStatusChange(candidate, status)}
+                            disabled={funnelStatus === status}
+                            className={`h-8 rounded-md border px-2 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                              funnelStatus === status
+                                ? "border-navy bg-navy text-white"
+                                : "border-line bg-white text-navy hover:border-gold"
+                            }`}
+                          >
+                            {status}
+                          </button>
+                        ))}
+                      </div>
+                    </td>
+                  ) : null}
                 </tr>
               );
             })}
@@ -1248,6 +1298,7 @@ export default function Page() {
           <Metric label="Compareceram" value={String(countFunnelStatus("Compareceu"))} icon={Gauge} detail="Participaram da apresentacao" />
           <Metric label="Não compareceram" value={String(countFunnelStatus("Não compareceu"))} icon={FileText} detail="Reagendar ou encerrar" />
           <Metric label="Sem interesse" value={String(countFunnelStatus("Sem interesse"))} icon={Filter} detail="Descartes manuais" />
+          <Metric label="Telefone inválido" value={String(countFunnelStatus("Telefone inválido"))} icon={FileText} detail="Corrigir contato" />
         </div>
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <Card>
