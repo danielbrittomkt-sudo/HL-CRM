@@ -96,6 +96,7 @@ type ModuleKey =
   | "candidatos-recrutamento"
   | "fila-envio"
   | "apresentacoes-recrutamento"
+  | "relatorios-recrutamento"
   | "historico-contatos"
   | "configuracoes-recrutamento";
 
@@ -136,6 +137,7 @@ const recruitmentNav: { key: ModuleKey; label: string }[] = [
   { key: "candidatos-recrutamento", label: "Candidatos" },
   { key: "fila-envio", label: "Fila de Envio" },
   { key: "apresentacoes-recrutamento", label: "Apresentacoes" },
+  { key: "relatorios-recrutamento", label: "Relatorios" },
   { key: "historico-contatos", label: "Historico de Contatos" },
   { key: "configuracoes-recrutamento", label: "Configuracoes" }
 ];
@@ -171,6 +173,7 @@ const titles: Record<ModuleKey, { eyebrow: string; title: string }> = {
   "candidatos-recrutamento": { eyebrow: "Area de Recrutamento", title: "Candidatos" },
   "fila-envio": { eyebrow: "Area de Recrutamento", title: "Fila de Envio" },
   "apresentacoes-recrutamento": { eyebrow: "Area de Recrutamento", title: "Apresentacoes" },
+  "relatorios-recrutamento": { eyebrow: "Area de Recrutamento", title: "Relatorios" },
   "historico-contatos": { eyebrow: "Area de Recrutamento", title: "Historico de Contatos" },
   "configuracoes-recrutamento": { eyebrow: "Area de Recrutamento", title: "Configuracoes" }
 };
@@ -400,6 +403,15 @@ const candidateQuickFunnelActions: RecruitmentFunnelStatus[] = [
   "Telefone inválido"
 ];
 
+type RecruitmentReportPeriod = "hoje" | "7d" | "30d" | "todos";
+
+const recruitmentReportPeriods: { key: RecruitmentReportPeriod; label: string }[] = [
+  { key: "hoje", label: "Hoje" },
+  { key: "7d", label: "Ultimos 7 dias" },
+  { key: "30d", label: "Ultimos 30 dias" },
+  { key: "todos", label: "Todos" }
+];
+
 const participationOptions: RecruitmentPresentationCandidateStatus[] = [
   "confirmou_presenca",
   "compareceu",
@@ -576,6 +588,25 @@ function isWhatsAppHistoryForDate(item: ContactHistoryItem, dateKey: string) {
   return item.status === "mensagem_enviada" && item.origem === "WhatsApp" && getHistoryDateKey(item) === dateKey;
 }
 
+function getPeriodStartDateKey(period: RecruitmentReportPeriod) {
+  if (period === "todos") return "";
+  const date = new Date();
+  if (period === "7d") date.setDate(date.getDate() - 6);
+  if (period === "30d") date.setDate(date.getDate() - 29);
+  return getLocalDateKey(date);
+}
+
+function isDateInReportPeriod(dateKey: string, period: RecruitmentReportPeriod) {
+  if (period === "todos") return true;
+  if (!dateKey) return false;
+  return dateKey >= getPeriodStartDateKey(period) && dateKey <= getLocalDateKey();
+}
+
+function formatReportRate(value: number, base: number) {
+  if (!base) return "0%";
+  return `${Math.round((value / base) * 100)}%`;
+}
+
 export default function Page() {
   const [active, setActive] = useState<ModuleKey>("dashboard-recrutamento");
   const [importRows, setImportRows] = useState<RecruitmentCandidate[]>(importedCandidates);
@@ -598,6 +629,8 @@ export default function Page() {
   const [sendingQueueItemId, setSendingQueueItemId] = useState<number | null>(null);
   const [whatsappSendFeedback, setWhatsappSendFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [candidateFunnelFilter, setCandidateFunnelFilter] = useState<"Todos" | RecruitmentFunnelStatus>("Todos");
+  const [recruitmentReportPeriod, setRecruitmentReportPeriod] = useState<RecruitmentReportPeriod>("todos");
+  const [recruitmentReportSource, setRecruitmentReportSource] = useState("Todas");
   const latest = conversionByMonth[conversionByMonth.length - 1];
   const conversionRate = Math.round((latest.vendas / latest.leads) * 1000) / 10;
   const title = titles[active];
@@ -1687,6 +1720,203 @@ export default function Page() {
     );
   }
 
+  function RecruitmentReports() {
+    const candidateRows = importRows.length ? importRows : candidateList;
+    const sourceOptions = ["Todas", ...Array.from(new Set(candidateRows.map((candidate) => candidate.fonte || "Sem fonte"))).sort()];
+    const candidateByPhone = new Map(candidateRows.map((candidate) => [normalizeQueuePhone(candidate.telefone), candidate]));
+    const matchesSource = (candidate?: Pick<RecruitmentCandidate, "fonte">) =>
+      recruitmentReportSource === "Todas" || (candidate?.fonte || "Sem fonte") === recruitmentReportSource;
+    const historyInPeriod = contactHistoryRows.filter((item) => isDateInReportPeriod(getHistoryDateKey(item), recruitmentReportPeriod));
+    const presentationsInPeriod = presentationRows.filter((presentation) => isDateInReportPeriod(presentation.data, recruitmentReportPeriod));
+    const eventPhonesInPeriod = new Set([
+      ...historyInPeriod.map((item) => normalizeQueuePhone(item.telefone)),
+      ...presentationsInPeriod.flatMap((presentation) => presentation.candidates.map((candidate) => normalizeQueuePhone(candidate.telefone)))
+    ]);
+    const reportCandidates = candidateRows.filter((candidate) => {
+      const sourceOk = matchesSource(candidate);
+      if (!sourceOk) return false;
+      if (recruitmentReportPeriod === "todos") return true;
+      return eventPhonesInPeriod.has(normalizeQueuePhone(candidate.telefone));
+    });
+    const reportCandidatePhones = new Set(reportCandidates.map((candidate) => normalizeQueuePhone(candidate.telefone)));
+    const reportHistory = historyInPeriod.filter((item) => {
+      const candidate = candidateByPhone.get(normalizeQueuePhone(item.telefone));
+      return reportCandidatePhones.has(normalizeQueuePhone(item.telefone)) || matchesSource(candidate || { fonte: item.fonte });
+    });
+    const reportPresentations = presentationsInPeriod.map((presentation) => ({
+      ...presentation,
+      candidates: presentation.candidates.filter((candidate) => {
+        const sourceCandidate = candidateByPhone.get(normalizeQueuePhone(candidate.telefone));
+        return matchesSource(sourceCandidate || { fonte: candidate.fonte || "Sem fonte" });
+      })
+    }));
+    const countFunnelStatus = (status: RecruitmentFunnelStatus) =>
+      reportCandidates.filter((candidate) => getCandidateFunnelStatus(candidate) === status).length;
+    const invalidPhoneStatus = recruitmentFunnelStatuses.find((status) => status.includes("Telefone")) ?? "Novo candidato";
+    const whatsappSent = reportHistory.filter((item) => item.status === "mensagem_enviada" && item.origem === "WhatsApp").length;
+    const answered = countFunnelStatus("Respondeu");
+    const interested = countFunnelStatus("Confirmou interesse");
+    const scheduled = reportPresentations.reduce((total, presentation) => total + presentation.candidates.length, 0);
+    const attended = reportPresentations.reduce(
+      (total, presentation) => total + presentation.candidates.filter((candidate) => candidate.statusParticipacao === "compareceu").length,
+      0
+    );
+    const missed = reportPresentations.reduce(
+      (total, presentation) => total + presentation.candidates.filter((candidate) => candidate.statusParticipacao === "nao_compareceu").length,
+      0
+    );
+    const sourceRows = Array.from(
+      reportCandidates.reduce((groups, candidate) => {
+        const source = candidate.fonte || "Sem fonte";
+        const current = groups.get(source) || {
+          fonte: source,
+          total: 0,
+          whatsapp: 0,
+          interesse: 0,
+          compareceram: 0
+        };
+        const phone = normalizeQueuePhone(candidate.telefone);
+        const candidatePresentations = reportPresentations.flatMap((presentation) => presentation.candidates).filter((linked) => normalizeQueuePhone(linked.telefone) === phone);
+        groups.set(source, {
+          ...current,
+          total: current.total + 1,
+          whatsapp: current.whatsapp + (reportHistory.some((item) => item.status === "mensagem_enviada" && item.origem === "WhatsApp" && normalizeQueuePhone(item.telefone) === phone) ? 1 : 0),
+          interesse: current.interesse + (getCandidateFunnelStatus(candidate) === "Confirmou interesse" ? 1 : 0),
+          compareceram: current.compareceram + (candidatePresentations.some((linked) => linked.statusParticipacao === "compareceu") ? 1 : 0)
+        });
+        return groups;
+      }, new Map<string, { fonte: string; total: number; whatsapp: number; interesse: number; compareceram: number }>())
+    ).map(([, value]) => value);
+
+    return (
+      <div className="space-y-6">
+        <Card>
+          <SectionTitle icon={Filter} title="Filtros" />
+          <div className="grid gap-4 border-t border-line p-5 md:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-medium uppercase tracking-normal text-steel">Periodo</span>
+              <select
+                className="mt-2 h-10 w-full rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink outline-none"
+                value={recruitmentReportPeriod}
+                onChange={(event) => setRecruitmentReportPeriod(event.target.value as RecruitmentReportPeriod)}
+              >
+                {recruitmentReportPeriods.map((period) => (
+                  <option key={period.key} value={period.key}>{period.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium uppercase tracking-normal text-steel">Fonte</span>
+              <select
+                className="mt-2 h-10 w-full rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink outline-none"
+                value={recruitmentReportSource}
+                onChange={(event) => setRecruitmentReportSource(event.target.value)}
+              >
+                {sourceOptions.map((source) => (
+                  <option key={source} value={source}>{source}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </Card>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Metric label="Total de candidatos" value={String(reportCandidates.length)} icon={Users} detail="Base filtrada" />
+          <Metric label="WhatsApps enviados" value={String(whatsappSent)} icon={BadgeCheck} detail="Envios pelo CRM" />
+          <Metric label="Responderam" value={String(answered)} icon={Activity} detail="Funil atual" />
+          <Metric label="Confirmaram interesse" value={String(interested)} icon={CheckCircle2} detail="Funil atual" />
+          <Metric label="Apresentacoes agendadas" value={String(scheduled)} icon={Target} detail="Candidatos vinculados" />
+          <Metric label="Compareceram" value={String(attended)} icon={Gauge} detail="Participacao" />
+          <Metric label="Nao compareceram" value={String(missed)} icon={FileText} detail="Participacao" />
+          <Metric label="Sem interesse" value={String(countFunnelStatus("Sem interesse"))} icon={Filter} detail="Descartes" />
+          <Metric label="Telefone invalido" value={String(countFunnelStatus(invalidPhoneStatus))} icon={FileText} detail="Contatos invalidos" />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Metric label="Taxa de resposta" value={formatReportRate(answered, whatsappSent)} icon={TrendingUp} detail="Responderam / WhatsApps" />
+          <Metric label="Taxa de interesse" value={formatReportRate(interested, whatsappSent)} icon={TrendingUp} detail="Interesse / WhatsApps" />
+          <Metric label="Taxa de agendamento" value={formatReportRate(scheduled, interested)} icon={TrendingUp} detail="Agendados / Interesse" />
+          <Metric label="Taxa de comparecimento" value={formatReportRate(attended, scheduled)} icon={TrendingUp} detail="Compareceram / Agendados" />
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Card>
+            <SectionTitle icon={BarChart3} title="Analise por fonte" />
+            <div className="overflow-x-auto thin-scrollbar">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="bg-mist text-xs uppercase tracking-normal text-steel">
+                  <tr>
+                    <th className="px-5 py-3">Fonte</th>
+                    <th className="px-5 py-3">Total</th>
+                    <th className="px-5 py-3">WhatsApps enviados</th>
+                    <th className="px-5 py-3">Confirmaram interesse</th>
+                    <th className="px-5 py-3">Compareceram</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {sourceRows.length ? sourceRows.map((row) => (
+                    <tr key={row.fonte}>
+                      <td className="px-5 py-4 font-semibold text-ink">{row.fonte}</td>
+                      <td className="px-5 py-4">{row.total}</td>
+                      <td className="px-5 py-4">{row.whatsapp}</td>
+                      <td className="px-5 py-4">{row.interesse}</td>
+                      <td className="px-5 py-4">{row.compareceram}</td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-6 text-center text-sm text-steel">Nenhum dado para os filtros selecionados.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <Card>
+            <SectionTitle icon={Target} title="Analise por apresentacao" />
+            <div className="overflow-x-auto thin-scrollbar">
+              <table className="w-full min-w-[820px] text-left text-sm">
+                <thead className="bg-mist text-xs uppercase tracking-normal text-steel">
+                  <tr>
+                    <th className="px-5 py-3">Titulo</th>
+                    <th className="px-5 py-3">Data</th>
+                    <th className="px-5 py-3">Horario</th>
+                    <th className="px-5 py-3">Vinculados</th>
+                    <th className="px-5 py-3">Compareceram</th>
+                    <th className="px-5 py-3">Nao compareceram</th>
+                    <th className="px-5 py-3">Taxa</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {reportPresentations.length ? reportPresentations.map((presentation) => {
+                    const presentationAttended = presentation.candidates.filter((candidate) => candidate.statusParticipacao === "compareceu").length;
+                    const presentationMissed = presentation.candidates.filter((candidate) => candidate.statusParticipacao === "nao_compareceu").length;
+
+                    return (
+                      <tr key={presentation.id}>
+                        <td className="px-5 py-4 font-semibold text-ink">{presentation.titulo}</td>
+                        <td className="px-5 py-4">{presentation.data}</td>
+                        <td className="px-5 py-4">{presentation.horario}</td>
+                        <td className="px-5 py-4">{presentation.candidates.length}</td>
+                        <td className="px-5 py-4">{presentationAttended}</td>
+                        <td className="px-5 py-4">{presentationMissed}</td>
+                        <td className="px-5 py-4 font-semibold text-navy">{formatReportRate(presentationAttended, presentation.candidates.length)}</td>
+                      </tr>
+                    );
+                  }) : (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-6 text-center text-sm text-steel">Nenhuma apresentacao para os filtros selecionados.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   function RecruitmentDashboard() {
     const countFunnelStatus = (status: RecruitmentFunnelStatus) =>
       importRows.filter((candidate) => getCandidateFunnelStatus(candidate) === status).length;
@@ -2138,6 +2368,7 @@ export default function Page() {
     if (active === "candidatos-recrutamento") return <RecruitmentCandidates />;
     if (active === "fila-envio") return <SendQueue />;
     if (active === "apresentacoes-recrutamento") return <Presentations />;
+    if (active === "relatorios-recrutamento") return <RecruitmentReports />;
     if (active === "historico-contatos") return <ContactHistory />;
     return <RecruitmentSettings />;
   }
