@@ -1,26 +1,18 @@
 # Importacao Google Sheets - Recrutamento
 
-Este guia conecta uma planilha Google Sheets ao endpoint interno do Home Life CRM:
+Este documento explica como conectar uma planilha Google Sheets ao endpoint publico da Vercel do modulo Recrutamento.
+
+Endpoint usado:
 
 ```text
-POST https://SEU-PROJETO.vercel.app/api/recruitment/import-sheet
+POST https://hl-crm-eight.vercel.app/api/recruitment/import-sheet
 ```
 
-O endpoint recebe uma linha da planilha e salva como candidato no Supabase.
-
-## Variavel na Vercel
-
-No ambiente da Vercel, configure:
-
-```text
-SHEET_IMPORT_SECRET=SEU_SEGREDO_AQUI
-```
-
-Use o mesmo valor no Apps Script em `IMPORT_SECRET`.
+O endpoint recebe uma linha da planilha e salva o candidato no Supabase. A planilha deve enviar o mesmo segredo configurado na Vercel em `SHEET_IMPORT_SECRET`.
 
 ## Colunas da planilha
 
-Crie uma planilha com a primeira linha contendo exatamente estas colunas:
+Crie uma planilha Google Sheets com a primeira linha contendo exatamente estas colunas:
 
 ```text
 nome
@@ -33,31 +25,32 @@ mensagem_retorno
 data_importacao
 ```
 
-Campos obrigatorios para importar:
+Campos obrigatorios para envio:
 
 - `nome`
 - `telefone`
 - `fonte`
 
-Linhas sem um desses campos serao ignoradas pelo script.
+O script ignora linhas sem qualquer um desses campos obrigatorios.
 
-## Como criar o Apps Script
+## Como configurar
 
-1. Abra a planilha no Google Sheets.
-2. Clique em **Extensoes > Apps Script**.
-3. Apague qualquer codigo inicial.
-4. Cole o codigo completo abaixo.
-5. Altere:
-   - `API_URL`
-   - `IMPORT_SECRET`
-6. Clique em **Salvar**.
-7. Rode manualmente a funcao `importarCandidatosRecrutamento` para testar.
-8. Autorize o script quando o Google pedir.
+1. Abra o Google Sheets.
+2. Crie a planilha com as colunas listadas acima.
+3. Clique em **Extensoes**.
+4. Clique em **Apps Script**.
+5. Apague qualquer codigo inicial.
+6. Cole o codigo completo da secao abaixo.
+7. No Apps Script, troque `SEU_SEGREDO_AQUI` pelo mesmo valor configurado na Vercel em `SHEET_IMPORT_SECRET`.
+8. Salve o projeto.
+9. Execute manualmente a funcao `importarCandidatosPendentes` para testar.
+
+Nao coloque o segredo real no repositorio, em prints publicos ou em documentos versionados.
 
 ## Codigo Google Apps Script
 
 ```javascript
-const API_URL = "https://SEU-PROJETO.vercel.app/api/recruitment/import-sheet";
+const API_URL = "https://hl-crm-eight.vercel.app/api/recruitment/import-sheet";
 const IMPORT_SECRET = "SEU_SEGREDO_AQUI";
 const MAX_ROWS_PER_RUN = 50;
 
@@ -72,7 +65,7 @@ const REQUIRED_COLUMNS = [
   "data_importacao"
 ];
 
-function importarCandidatosRecrutamento() {
+function importarCandidatosPendentes() {
   const sheet = SpreadsheetApp.getActiveSheet();
   const values = sheet.getDataRange().getValues();
 
@@ -80,7 +73,10 @@ function importarCandidatosRecrutamento() {
     return;
   }
 
-  const headers = values[0].map((header) => String(header).trim());
+  const headers = values[0].map(function (header) {
+    return String(header).trim();
+  });
+
   const columns = mapColumns(headers);
   validateColumns(columns);
 
@@ -119,7 +115,7 @@ function importarCandidatosRecrutamento() {
 function mapColumns(headers) {
   const columns = {};
 
-  headers.forEach((header, index) => {
+  headers.forEach(function (header, index) {
     columns[header] = index;
   });
 
@@ -127,10 +123,12 @@ function mapColumns(headers) {
 }
 
 function validateColumns(columns) {
-  const missing = REQUIRED_COLUMNS.filter((column) => columns[column] === undefined);
+  const missing = REQUIRED_COLUMNS.filter(function (column) {
+    return columns[column] === undefined;
+  });
 
-  if (missing.length) {
-    throw new Error(`Colunas ausentes: ${missing.join(", ")}`);
+  if (missing.length > 0) {
+    throw new Error("Colunas ausentes: " + missing.join(", "));
   }
 }
 
@@ -158,7 +156,7 @@ function enviarCandidato(payload) {
       if (body.duplicated === true) {
         return {
           status: "DUPLICADO",
-          message: "Candidato ja existia por telefone."
+          message: "Candidato ja existe por telefone."
         };
       }
 
@@ -170,38 +168,36 @@ function enviarCandidato(payload) {
 
     return {
       status: "ERRO",
-      message: body.error || `Erro HTTP ${statusCode}`
+      message: body.error || "Erro HTTP " + statusCode
     };
   } catch (error) {
     return {
       status: "ERRO",
-      message: error instanceof Error ? error.message : String(error)
+      message: error && error.message ? error.message : String(error)
     };
   }
 }
 
 function preencherResultado(sheet, rowNumber, columns, result) {
-  const now = new Date();
-
   sheet.getRange(rowNumber, columns.status_importacao + 1).setValue(result.status);
   sheet.getRange(rowNumber, columns.mensagem_retorno + 1).setValue(result.message);
-  sheet.getRange(rowNumber, columns.data_importacao + 1).setValue(now);
+  sheet.getRange(rowNumber, columns.data_importacao + 1).setValue(new Date());
 }
 ```
 
-## Como testar
+## Como testar manualmente
 
-1. Preencha uma linha com:
+1. Preencha uma linha da planilha com dados de teste:
 
 ```text
-nome: Daniel Brito
+nome: Teste Planilha
 telefone: 21999999999
-email: daniel@email.com
-fonte: Catho
-observacao: Importado pela planilha
+email: teste.planilha@email.com
+fonte: Planilha
+observacao: Teste manual pelo Google Sheets
 ```
 
-2. Deixe vazias as colunas:
+2. Deixe vazias estas colunas:
 
 ```text
 status_importacao
@@ -212,40 +208,55 @@ data_importacao
 3. No Apps Script, selecione a funcao:
 
 ```text
-importarCandidatosRecrutamento
+importarCandidatosPendentes
 ```
 
 4. Clique em **Executar**.
-5. Volte para a planilha e confira:
+5. Autorize o script quando o Google solicitar.
+6. Volte para a planilha e confira:
    - `status_importacao`
    - `mensagem_retorno`
    - `data_importacao`
 
-## Gatilho automatico
+Resultados esperados:
 
-Para rodar automaticamente:
+- `IMPORTADO`: candidato criado no Supabase.
+- `DUPLICADO`: candidato ja existia pelo telefone.
+- `ERRO`: endpoint recusou ou houve falha na requisicao.
 
-1. No Apps Script, clique em **Gatilhos**.
-2. Clique em **Adicionar gatilho**.
-3. Escolha a funcao:
+## Como criar gatilho automatico
+
+1. No Google Sheets, clique em **Extensoes**.
+2. Clique em **Apps Script**.
+3. No menu lateral do Apps Script, clique no icone de **Relogio / Triggers**.
+4. Clique em **Adicionar trigger**.
+5. Em funcao, escolha:
 
 ```text
-importarCandidatosRecrutamento
+importarCandidatosPendentes
 ```
 
-4. Em origem do evento, escolha **Baseado em tempo**.
-5. Escolha a frequencia desejada, por exemplo:
-   - a cada 5 minutos;
-   - a cada 15 minutos;
-   - a cada hora.
-6. Salve o gatilho.
+6. Em origem do evento, escolha **Baseado em tempo**.
+7. Escolha a frequencia **A cada 5 minutos**.
+8. Salve o gatilho.
 
-O script processa no maximo 50 linhas por execucao para reduzir risco de limite do Google Apps Script.
+O script processa no maximo 50 linhas por execucao para evitar limites do Google Apps Script.
 
-## Cuidados
+## Regras do script
 
-- Nao coloque o segredo real em repositorios publicos.
-- Use `SHEET_IMPORT_SECRET` na Vercel com o mesmo valor de `IMPORT_SECRET`.
-- A URL final deve apontar para o dominio publicado da Vercel.
-- Linhas ja marcadas em `status_importacao` nao serao processadas novamente.
-- Para reenviar uma linha, limpe `status_importacao`, `mensagem_retorno` e `data_importacao`.
+- Le todas as linhas da planilha.
+- Ignora linhas sem `nome`, `telefone` ou `fonte`.
+- Ignora linhas que ja tenham `status_importacao` preenchido.
+- Envia no maximo 50 linhas por execucao.
+- Envia o header `x-import-secret`.
+- Preenche `status_importacao`, `mensagem_retorno` e `data_importacao`.
+
+## Variavel obrigatoria na Vercel
+
+No projeto da Vercel, a variavel abaixo precisa existir:
+
+```text
+SHEET_IMPORT_SECRET=SEU_SEGREDO_AQUI
+```
+
+O valor usado em `IMPORT_SECRET` no Apps Script deve ser igual ao valor configurado na Vercel. Nunca coloque o segredo real neste arquivo.
