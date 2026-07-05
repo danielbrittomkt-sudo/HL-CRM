@@ -132,14 +132,14 @@ const clientNav: { key: ModuleKey; label: string }[] = [
 
 const recruitmentNav: { key: ModuleKey; label: string }[] = [
   { key: "dashboard-recrutamento", label: "Dashboard Recrutamento" },
-  { key: "operacao-dia", label: "Operacao do Dia" },
+  { key: "operacao-dia", label: "Operação do Dia" },
   { key: "importar-candidatos", label: "Importar Candidatos" },
   { key: "candidatos-recrutamento", label: "Candidatos" },
   { key: "fila-envio", label: "Fila de Envio" },
-  { key: "apresentacoes-recrutamento", label: "Apresentacoes" },
-  { key: "relatorios-recrutamento", label: "Relatorios" },
-  { key: "historico-contatos", label: "Historico de Contatos" },
-  { key: "configuracoes-recrutamento", label: "Configuracoes" }
+  { key: "apresentacoes-recrutamento", label: "Apresentações" },
+  { key: "relatorios-recrutamento", label: "Relatórios" },
+  { key: "historico-contatos", label: "Histórico de Contatos" },
+  { key: "configuracoes-recrutamento", label: "Configurações" }
 ];
 
 const showLegacyCrmAreas = false;
@@ -168,14 +168,14 @@ const titles: Record<ModuleKey, { eyebrow: string; title: string }> = {
   "relatorios-conversao": { eyebrow: "Area de Clientes", title: "Relatorios de Conversao" },
   "inteligencia-compra": { eyebrow: "Area de Clientes", title: "Inteligencia de Compra" },
   "dashboard-recrutamento": { eyebrow: "Area de Recrutamento", title: "Dashboard Recrutamento" },
-  "operacao-dia": { eyebrow: "Area de Recrutamento", title: "Operacao do Dia" },
+  "operacao-dia": { eyebrow: "Area de Recrutamento", title: "Operação do Dia" },
   "importar-candidatos": { eyebrow: "Area de Recrutamento", title: "Importar Candidatos" },
   "candidatos-recrutamento": { eyebrow: "Area de Recrutamento", title: "Candidatos" },
   "fila-envio": { eyebrow: "Area de Recrutamento", title: "Fila de Envio" },
-  "apresentacoes-recrutamento": { eyebrow: "Area de Recrutamento", title: "Apresentacoes" },
-  "relatorios-recrutamento": { eyebrow: "Area de Recrutamento", title: "Relatorios" },
-  "historico-contatos": { eyebrow: "Area de Recrutamento", title: "Historico de Contatos" },
-  "configuracoes-recrutamento": { eyebrow: "Area de Recrutamento", title: "Configuracoes" }
+  "apresentacoes-recrutamento": { eyebrow: "Area de Recrutamento", title: "Apresentações" },
+  "relatorios-recrutamento": { eyebrow: "Area de Recrutamento", title: "Relatórios" },
+  "historico-contatos": { eyebrow: "Area de Recrutamento", title: "Histórico de Contatos" },
+  "configuracoes-recrutamento": { eyebrow: "Area de Recrutamento", title: "Configurações" }
 };
 
 const chartColors = {
@@ -404,12 +404,22 @@ const candidateQuickFunnelActions: RecruitmentFunnelStatus[] = [
 ];
 
 type RecruitmentReportPeriod = "hoje" | "7d" | "30d" | "todos";
+type ContactHistoryFilter = "Todos" | "WhatsApp" | "Manual" | "alteracao_funil" | "envio_whatsapp" | "apresentacao";
 
 const recruitmentReportPeriods: { key: RecruitmentReportPeriod; label: string }[] = [
   { key: "hoje", label: "Hoje" },
   { key: "7d", label: "Ultimos 7 dias" },
   { key: "30d", label: "Ultimos 30 dias" },
   { key: "todos", label: "Todos" }
+];
+
+const contactHistoryFilters: { key: ContactHistoryFilter; label: string }[] = [
+  { key: "Todos", label: "Todos" },
+  { key: "WhatsApp", label: "WhatsApp" },
+  { key: "Manual", label: "Manual" },
+  { key: "alteracao_funil", label: "Alteração de funil" },
+  { key: "envio_whatsapp", label: "Envio WhatsApp" },
+  { key: "apresentacao", label: "Apresentação/turma" }
 ];
 
 const participationOptions: RecruitmentPresentationCandidateStatus[] = [
@@ -631,6 +641,8 @@ export default function Page() {
   const [candidateFunnelFilter, setCandidateFunnelFilter] = useState<"Todos" | RecruitmentFunnelStatus>("Todos");
   const [recruitmentReportPeriod, setRecruitmentReportPeriod] = useState<RecruitmentReportPeriod>("todos");
   const [recruitmentReportSource, setRecruitmentReportSource] = useState("Todas");
+  const [contactHistoryFilter, setContactHistoryFilter] = useState<ContactHistoryFilter>("Todos");
+  const [contactHistorySearch, setContactHistorySearch] = useState("");
   const latest = conversionByMonth[conversionByMonth.length - 1];
   const conversionRate = Math.round((latest.vendas / latest.leads) * 1000) / 10;
   const title = titles[active];
@@ -1162,6 +1174,11 @@ export default function Page() {
   }
 
   async function handleClearRecruitmentData() {
+    const confirmed = window.confirm(
+      "Atenção: esta ação limpa os dados de teste locais do módulo Recrutamento e reseta as configurações. Deseja continuar?"
+    );
+    if (!confirmed) return;
+
     clearRecruitmentStorage();
     setImportRows(importedCandidates);
     setImportSummary(null);
@@ -1470,12 +1487,12 @@ export default function Page() {
               <th className="px-5 py-3">Fonte</th>
               <th className="px-5 py-3">Status</th>
               <th className="px-5 py-3">Funil</th>
-              {editableFunnel ? <th className="px-5 py-3">Apresentacao</th> : null}
+              {editableFunnel ? <th className="px-5 py-3">Apresentação</th> : null}
               {editableFunnel ? <th className="px-5 py-3">Ações rápidas</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {rows.map((candidate) => {
+            {rows.length ? rows.map((candidate) => {
               const funnelStatus = getCandidateFunnelStatus(candidate);
 
               return (
@@ -1540,28 +1557,18 @@ export default function Page() {
                   ) : null}
                   {editableFunnel ? (
                     <td className="px-5 py-4">
-                      <div className="flex max-w-[420px] flex-wrap gap-2">
-                        {candidateQuickFunnelActions.map((status) => (
-                          <button
-                            key={status}
-                            type="button"
-                            onClick={() => handleCandidateFunnelStatusChange(candidate, status)}
-                            disabled={funnelStatus === status}
-                            className={`h-8 rounded-md border px-2 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                              funnelStatus === status
-                                ? "border-navy bg-navy text-white"
-                                : "border-line bg-white text-navy hover:border-gold"
-                            }`}
-                          >
-                            {status}
-                          </button>
-                        ))}
-                      </div>
+                      <CandidateQuickActions candidate={candidate} />
                     </td>
                   ) : null}
                 </tr>
               );
-            })}
+            }) : (
+              <tr>
+                <td colSpan={editableFunnel ? 10 : 8} className="px-5 py-8 text-center text-sm text-steel">
+                  Nenhum candidato encontrado para este filtro.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -1572,22 +1579,26 @@ export default function Page() {
     const funnelStatus = getCandidateFunnelStatus(candidate);
 
     return (
-      <div className="flex flex-wrap gap-2">
-        {candidateQuickFunnelActions.map((status) => (
-          <button
-            key={status}
-            type="button"
-            onClick={() => handleCandidateFunnelStatusChange(candidate, status)}
-            disabled={funnelStatus === status}
-            className={`h-8 rounded-md border px-2 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-              funnelStatus === status
-                ? "border-navy bg-navy text-white"
-                : "border-line bg-white text-navy hover:border-gold"
-            }`}
-          >
-            {status}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          className="h-9 min-w-[190px] rounded-md border border-line bg-white px-3 text-xs font-semibold text-navy outline-none transition hover:border-gold"
+          value=""
+          onChange={(event) => {
+            const nextStatus = event.target.value as RecruitmentFunnelStatus;
+            if (nextStatus) handleCandidateFunnelStatusChange(candidate, nextStatus);
+          }}
+          aria-label={`Alterar status de ${candidate.nome}`}
+        >
+          <option value="">Alterar status</option>
+          {candidateQuickFunnelActions.map((status) => (
+            <option key={status} value={status} disabled={funnelStatus === status}>
+              {status}
+            </option>
+          ))}
+        </select>
+        <span className={`rounded-md px-2 py-1 text-xs font-semibold ${getFunnelStatusClass(funnelStatus)}`}>
+          {funnelStatus}
+        </span>
       </div>
     );
   }
@@ -1647,12 +1658,12 @@ export default function Page() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Metric label="Para contatar hoje" value={String(pendingQueueToday.length)} icon={Users} detail="Fila pendente" />
           <Metric label="WhatsApps enviados hoje" value={String(whatsappSentToday.length)} icon={BadgeCheck} detail="Historico do dia" />
-          <Metric label="Apresentacoes de hoje" value={String(presentationsToday.length)} icon={Target} detail="Turmas do dia" />
+          <Metric label="Apresentações de hoje" value={String(presentationsToday.length)} icon={Target} detail="Turmas do dia" />
           <Metric label="Agendados hoje" value={String(scheduledTodayCandidates.length)} icon={Activity} detail="Candidatos em turmas" />
           <Metric label="Confirmaram interesse" value={String(confirmedInterestCandidates.length)} icon={CheckCircle2} detail="Prontos para agendar" />
           <Metric label="Nao responderam" value={String(notRespondedCandidates.length)} icon={Filter} detail="Follow-up leve" />
           <Metric label="Nao compareceram" value={String(missedCandidates.length)} icon={FileText} detail="Reativar ou encerrar" />
-          <Metric label="Para follow-up" value={String(followUpCandidates.length)} icon={Gauge} detail="Acoes manuais" />
+          <Metric label="Para follow-up" value={String(followUpCandidates.length)} icon={Gauge} detail="Ações manuais" />
         </div>
 
         <div className="grid gap-6 xl:grid-cols-2">
@@ -1668,7 +1679,7 @@ export default function Page() {
                       <div>
                         <p className="font-semibold text-ink">{item.nome}</p>
                         <p className="mt-1 text-sm text-steel">{item.telefone}</p>
-                        <p className="mt-1 text-xs text-steel">Apresentacao sugerida: {item.apresentacao} {item.horario_apresentacao}</p>
+                        <p className="mt-1 text-xs text-steel">Apresentação sugerida: {item.apresentacao} {item.horario_apresentacao}</p>
                       </div>
                       <span className="rounded-md bg-mist px-2 py-1 text-xs font-semibold text-navy">{item.status_envio}</span>
                     </div>
@@ -1677,14 +1688,14 @@ export default function Page() {
                 );
               }) : (
                 <div className="rounded-lg border border-dashed border-line p-5 text-sm text-steel">
-                  Nenhum candidato pendente na fila.
+                  Nenhum candidato pendente na fila de hoje.
                 </div>
               )}
             </div>
           </Card>
 
           <Card>
-            <SectionTitle icon={Target} title="Apresentacoes de hoje" />
+            <SectionTitle icon={Target} title="Apresentações de hoje" />
             <div className="space-y-3 border-t border-line p-5">
               {presentationsToday.length ? presentationsToday.map((presentation) => {
                 const attended = presentation.candidates.filter((candidate) => candidate.statusParticipacao === "compareceu").length;
@@ -1703,7 +1714,7 @@ export default function Page() {
                 );
               }) : (
                 <div className="rounded-lg border border-dashed border-line p-5 text-sm text-steel">
-                  Nenhuma apresentacao para hoje.
+                  Nenhuma apresentação cadastrada para hoje.
                 </div>
               )}
             </div>
@@ -1825,7 +1836,7 @@ export default function Page() {
           <Metric label="WhatsApps enviados" value={String(whatsappSent)} icon={BadgeCheck} detail="Envios pelo CRM" />
           <Metric label="Responderam" value={String(answered)} icon={Activity} detail="Funil atual" />
           <Metric label="Confirmaram interesse" value={String(interested)} icon={CheckCircle2} detail="Funil atual" />
-          <Metric label="Apresentacoes agendadas" value={String(scheduled)} icon={Target} detail="Candidatos vinculados" />
+          <Metric label="Apresentações agendadas" value={String(scheduled)} icon={Target} detail="Candidatos vinculados" />
           <Metric label="Compareceram" value={String(attended)} icon={Gauge} detail="Participacao" />
           <Metric label="Nao compareceram" value={String(missed)} icon={FileText} detail="Participacao" />
           <Metric label="Sem interesse" value={String(countFunnelStatus("Sem interesse"))} icon={Filter} detail="Descartes" />
@@ -1873,7 +1884,7 @@ export default function Page() {
           </Card>
 
           <Card>
-            <SectionTitle icon={Target} title="Analise por apresentacao" />
+            <SectionTitle icon={Target} title="Análise por apresentação" />
             <div className="overflow-x-auto thin-scrollbar">
               <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="bg-mist text-xs uppercase tracking-normal text-steel">
@@ -1905,7 +1916,7 @@ export default function Page() {
                     );
                   }) : (
                     <tr>
-                      <td colSpan={7} className="px-5 py-6 text-center text-sm text-steel">Nenhuma apresentacao para os filtros selecionados.</td>
+                      <td colSpan={7} className="px-5 py-6 text-center text-sm text-steel">Nenhuma apresentação encontrada para os filtros selecionados.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1946,7 +1957,7 @@ export default function Page() {
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Metric label="Total de candidatos" value={String(importRows.length)} icon={Users} detail="Base carregada" />
-          <Metric label="Apresentacoes futuras" value={String(futurePresentations)} icon={Target} detail="Turmas agendadas" />
+          <Metric label="Apresentações futuras" value={String(futurePresentations)} icon={Target} detail="Turmas agendadas" />
           <Metric label="Candidatos agendados" value={String(scheduledPresentationCandidates)} icon={Users} detail="Vinculados a turmas" />
           <Metric label="Compareceram em turmas" value={String(attendedPresentationCandidates)} icon={Gauge} detail="Controle de apresentacao" />
           <Metric label="Nao compareceram em turmas" value={String(missedPresentationCandidates)} icon={FileText} detail="Acompanhamento" />
@@ -1986,7 +1997,7 @@ export default function Page() {
             <div className="rounded-lg border border-dashed border-navy/30 bg-mist p-6 text-center">
               <FileText className="mx-auto text-navy" size={34} />
               <p className="mt-3 font-semibold text-ink">Arraste uma planilha ou selecione um arquivo</p>
-              <p className="mt-2 text-sm text-steel">Mock visual para CSV ou Excel. Nenhum arquivo sera enviado nesta etapa.</p>
+              <p className="mt-2 text-sm text-steel">Selecione um CSV para importar candidatos e validar nome, telefone, email e duplicidades.</p>
               <label className="mt-4 inline-flex h-10 cursor-pointer items-center rounded-md bg-navy px-4 text-sm font-semibold text-white">
                 Selecionar arquivo
                 <input className="sr-only" type="file" accept=".csv,text/csv" onChange={handleCandidateCsv} />
@@ -1995,7 +2006,7 @@ export default function Page() {
             <div className="rounded-lg border border-line p-4 text-sm text-steel">
               <p className="font-semibold text-ink">Colunas esperadas</p>
               <p className="mt-3">Nome, Telefone, Email, Cidade, Cargo, Fonte e Status.</p>
-              <p className="mt-3">A validacao final sera conectada ao banco em outra fase.</p>
+              <p className="mt-3">Os candidatos importados ficam disponíveis no CRM e podem ser sincronizados com o Supabase.</p>
               {importSummary ? (
                 <div className="mt-4 grid gap-2 sm:grid-cols-4">
                   <span className="rounded-md bg-mist px-3 py-2 font-semibold text-navy">Total {importSummary.total}</span>
@@ -2047,16 +2058,21 @@ export default function Page() {
       <Card>
         <SectionTitle
           icon={FileText}
-          title="50 candidatos simulados para envio"
+          title="Fila de envio WhatsApp"
           action={
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={handleGenerateQueue} className="h-9 rounded-md bg-navy px-3 text-sm font-semibold text-white">Gerar fila de hoje</button>
-              <button type="button" onClick={handleSimulateSend} className="h-9 rounded-md border border-line bg-white px-3 text-sm font-semibold text-navy">Simular envio</button>
+              <button type="button" onClick={handleSimulateSend} className="h-9 rounded-md border border-line bg-white px-3 text-xs font-semibold text-steel transition hover:border-gold hover:text-navy">Simulação interna</button>
             </div>
           }
         />
         <div className="border-t border-line px-5 py-3 text-sm text-steel">
-          Modo teste: o envio atual usa o template configurado na Meta. Aguarde aprovacao do modelo oficial da Home Life.
+          <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 font-semibold text-ink">
+            Envio real ativo: ao clicar em Enviar WhatsApp, uma mensagem será enviada pela API da Meta.
+          </p>
+          <p className="mt-2 text-xs text-steel">
+            Use Simulação interna apenas para teste local do fluxo, sem disparo real de WhatsApp.
+          </p>
           <p className="mt-2 font-semibold text-navy">Envios WhatsApp hoje: {whatsappSendsToday} / {whatsappDailyLimit}</p>
           {whatsappSendFeedback ? (
             <p className={`mt-2 font-semibold ${whatsappSendFeedback.type === "success" ? "text-success" : "text-danger"}`}>
@@ -2095,7 +2111,7 @@ export default function Page() {
                       type="button"
                       onClick={() => handleSendQueueItemWhatsApp(item)}
                       disabled={item.status_envio !== "pendente_envio" || sendingQueueItemId !== null || !isValidQueuePhone(item.telefone)}
-                      className="h-9 rounded-md border border-line bg-white px-3 text-xs font-semibold text-navy transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+                      className="h-9 rounded-md bg-navy px-3 text-xs font-semibold text-white transition hover:bg-ocean disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {sendingQueueItemId === item.id ? "Enviando..." : item.status_envio === "mensagem_enviada" ? "Enviado" : "Enviar WhatsApp"}
                     </button>
@@ -2113,7 +2129,7 @@ export default function Page() {
     return (
       <div className="space-y-6">
         <Card>
-          <SectionTitle icon={Target} title="Criar apresentacao" />
+          <SectionTitle icon={Target} title="Criar apresentação" />
           <div className="grid gap-4 border-t border-line p-5 md:grid-cols-2 xl:grid-cols-4">
             <label className="block">
               <span className="text-xs font-medium uppercase tracking-normal text-steel">Titulo</span>
@@ -2151,13 +2167,13 @@ export default function Page() {
           </div>
           <div className="border-t border-line p-5">
             <button type="button" onClick={handleCreatePresentation} className="h-10 rounded-md bg-navy px-4 text-sm font-semibold text-white transition hover:bg-ocean">
-              Criar apresentacao
+              Criar apresentação
             </button>
           </div>
         </Card>
 
         <Card>
-          <SectionTitle icon={Users} title="Apresentacoes" />
+          <SectionTitle icon={Users} title="Apresentações" />
           <div className="space-y-4 border-t border-line p-5">
             {presentationRows.length ? presentationRows.map((presentation) => (
               <div key={presentation.id} className="rounded-lg border border-line p-4">
@@ -2230,7 +2246,7 @@ export default function Page() {
               </div>
             )) : (
               <div className="rounded-lg border border-dashed border-line p-6 text-sm text-steel">
-                Nenhuma apresentacao criada ainda.
+                Nenhuma apresentação cadastrada. Crie uma turma para vincular candidatos.
               </div>
             )}
           </div>
@@ -2240,11 +2256,50 @@ export default function Page() {
   }
 
   function ContactHistory() {
+    const normalizedSearch = contactHistorySearch.trim().toLowerCase();
+    const filteredHistoryRows = contactHistoryRows.filter((item) => {
+      const matchesSearch = !normalizedSearch
+        || item.nome.toLowerCase().includes(normalizedSearch)
+        || normalizeQueuePhone(item.telefone).includes(normalizeQueuePhone(normalizedSearch));
+      const matchesFilter =
+        contactHistoryFilter === "Todos"
+        || (contactHistoryFilter === "WhatsApp" && item.origem === "WhatsApp")
+        || (contactHistoryFilter === "Manual" && item.origem === "Manual")
+        || (contactHistoryFilter === "alteracao_funil" && item.status === "alteracao_funil")
+        || (contactHistoryFilter === "envio_whatsapp" && item.status === "mensagem_enviada" && item.origem === "WhatsApp")
+        || (contactHistoryFilter === "apresentacao" && Boolean(item.presentationId || item.presentationTitle || item.participationStatus));
+
+      return matchesSearch && matchesFilter;
+    });
+
     return (
       <Card>
-        <SectionTitle icon={FileText} title="Historico de contatos" />
+        <SectionTitle icon={FileText} title="Histórico de contatos" />
+        <div className="grid gap-4 border-t border-line p-5 lg:grid-cols-[1fr_0.7fr]">
+          <label className="block">
+            <span className="text-xs font-medium uppercase tracking-normal text-steel">Buscar por nome ou telefone</span>
+            <input
+              className="mt-2 h-10 w-full rounded-md border border-line px-3 text-sm font-semibold text-ink outline-none"
+              value={contactHistorySearch}
+              onChange={(event) => setContactHistorySearch(event.target.value)}
+              placeholder="Ex.: Ana ou 5521..."
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium uppercase tracking-normal text-steel">Tipo de registro</span>
+            <select
+              className="mt-2 h-10 w-full rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink outline-none"
+              value={contactHistoryFilter}
+              onChange={(event) => setContactHistoryFilter(event.target.value as ContactHistoryFilter)}
+            >
+              {contactHistoryFilters.map((filter) => (
+                <option key={filter.key} value={filter.key}>{filter.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
         <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
-          {contactHistoryRows.map((item, index) => (
+          {filteredHistoryRows.length ? filteredHistoryRows.map((item, index) => (
             <div key={`${item.nome}-${item.status}-${index}`} className="rounded-lg border border-line p-4">
               <p className="font-semibold text-ink">{item.nome}</p>
               <p className="mt-1 text-sm text-steel">{item.telefone}</p>
@@ -2254,13 +2309,17 @@ export default function Page() {
               <p className="mt-1 text-xs text-steel">Apresentacao: {item.data_apresentacao}</p>
               {item.origem ? <p className="mt-1 text-xs text-steel">Origem: {item.origem}</p> : null}
               {item.funilStatus ? <p className="mt-1 text-xs font-semibold text-navy">Funil: {item.funilStatus}</p> : null}
-              {item.presentationTitle ? <p className="mt-1 text-xs text-steel">Apresentacao: {item.presentationTitle}</p> : null}
+              {item.presentationTitle ? <p className="mt-1 text-xs text-steel">Apresentação: {item.presentationTitle}</p> : null}
               {item.participationStatus ? <p className="mt-1 text-xs text-steel">Participacao: {getParticipationLabel(item.participationStatus)}</p> : null}
               {item.templateLabel ? <p className="mt-1 text-xs text-steel">Template: {item.templateLabel}</p> : null}
               {item.messageId ? <p className="mt-1 break-all text-xs text-steel">MessageId: {item.messageId}</p> : null}
               <p className="mt-3 text-xs leading-5 text-steel">{item.mensagem}</p>
             </div>
-          ))}
+          )) : (
+            <div className="rounded-lg border border-dashed border-line p-5 text-sm text-steel md:col-span-2 xl:col-span-4">
+              Nenhum histórico encontrado para os filtros selecionados.
+            </div>
+          )}
         </div>
       </Card>
     );
@@ -2353,7 +2412,13 @@ export default function Page() {
           <button type="button" onClick={handleSaveRecruitmentSettings} className="h-10 rounded-md bg-navy px-4 text-sm font-semibold text-white transition hover:bg-ocean">
             Salvar configurações
           </button>
-          <button type="button" onClick={handleClearRecruitmentData} className="h-10 rounded-md border border-line bg-white px-4 text-sm font-semibold text-navy transition hover:border-gold hover:text-ink">
+        </div>
+        <div className="border-t border-danger/20 bg-danger/5 p-5">
+          <p className="text-sm font-semibold text-danger">Zona de cuidado</p>
+          <p className="mt-1 text-xs text-steel">
+            A ação abaixo limpa dados locais de teste do módulo Recrutamento e reseta as configurações. Use apenas em manutenção.
+          </p>
+          <button type="button" onClick={handleClearRecruitmentData} className="mt-4 h-10 rounded-md border border-danger/30 bg-white px-4 text-sm font-semibold text-danger transition hover:bg-danger hover:text-white">
             Limpar dados de teste
           </button>
         </div>
