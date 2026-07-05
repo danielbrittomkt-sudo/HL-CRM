@@ -51,6 +51,42 @@ export type ContactHistoryItem = {
   templateLabel?: string;
   dataApresentacao?: string;
   horarioApresentacao?: string;
+  presentationId?: string;
+  presentationTitle?: string;
+  participationStatus?: RecruitmentPresentationCandidateStatus;
+};
+
+export type RecruitmentPresentationStatus = "agendada" | "realizada" | "cancelada";
+
+export type RecruitmentPresentationCandidateStatus =
+  | "agendado"
+  | "confirmou_presenca"
+  | "compareceu"
+  | "nao_compareceu"
+  | "sem_interesse";
+
+export type RecruitmentPresentationCandidate = {
+  id: string;
+  presentationId: string;
+  nome: string;
+  telefone: string;
+  email?: string;
+  fonte?: string;
+  statusParticipacao: RecruitmentPresentationCandidateStatus;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type RecruitmentPresentation = {
+  id: string;
+  titulo: string;
+  data: string;
+  horario: string;
+  status: RecruitmentPresentationStatus;
+  observacao: string;
+  candidates: RecruitmentPresentationCandidate[];
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type RecruitmentSettings = {

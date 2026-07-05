@@ -1,10 +1,11 @@
-import type { ContactHistoryItem, RecruitmentCandidate, RecruitmentSettings, SendQueueItem } from "./recruitment-types";
+import type { ContactHistoryItem, RecruitmentCandidate, RecruitmentPresentation, RecruitmentSettings, SendQueueItem } from "./recruitment-types";
 
 const storageKeys = {
   candidates: "home-life-recruitment:candidates",
   queue: "home-life-recruitment:queue",
   history: "home-life-recruitment:history",
-  settings: "home-life-recruitment:settings"
+  settings: "home-life-recruitment:settings",
+  presentations: "home-life-recruitment:presentations"
 };
 
 function readArray<T>(key: string): T[] | null | "corrupt" {
@@ -55,17 +56,19 @@ export function loadRecruitmentStorage() {
   const queue = readArray<SendQueueItem>(storageKeys.queue);
   const history = readArray<ContactHistoryItem>(storageKeys.history);
   const settings = readSettings(storageKeys.settings);
+  const presentations = readArray<RecruitmentPresentation>(storageKeys.presentations);
 
-  if (candidates === "corrupt" || queue === "corrupt" || history === "corrupt" || settings === "corrupt") {
+  if (candidates === "corrupt" || queue === "corrupt" || history === "corrupt" || settings === "corrupt" || presentations === "corrupt") {
     clearRecruitmentStorage();
-    return { candidates: null, queue: null, history: null, settings: null };
+    return { candidates: null, queue: null, history: null, settings: null, presentations: null };
   }
 
   return {
     candidates,
     queue,
     history,
-    settings
+    settings,
+    presentations
   };
 }
 
@@ -74,11 +77,13 @@ export function saveRecruitmentStorage(data: {
   queue: SendQueueItem[];
   history: ContactHistoryItem[];
   settings: RecruitmentSettings;
+  presentations?: RecruitmentPresentation[];
 }) {
   writeJson(storageKeys.candidates, data.candidates);
   writeJson(storageKeys.queue, data.queue);
   writeJson(storageKeys.history, data.history);
   writeJson(storageKeys.settings, data.settings);
+  writeJson(storageKeys.presentations, data.presentations ?? []);
 }
 
 export function clearRecruitmentStorage() {
@@ -87,4 +92,5 @@ export function clearRecruitmentStorage() {
   window.localStorage.removeItem(storageKeys.queue);
   window.localStorage.removeItem(storageKeys.history);
   window.localStorage.removeItem(storageKeys.settings);
+  window.localStorage.removeItem(storageKeys.presentations);
 }

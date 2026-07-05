@@ -47,9 +47,18 @@ import type { RecruitmentImportSummary } from "@/lib/recruitment-import";
 import { candidateList, contactHistory, importedCandidates, recruitmentSettings as defaultRecruitmentSettings, sendQueue } from "@/lib/recruitment-data";
 import { generateTodaySendQueue } from "@/lib/recruitment-scheduler";
 import { clearRecruitmentStorage, loadRecruitmentStorage, saveRecruitmentStorage } from "@/lib/recruitment-storage";
-import type { ContactHistoryItem, RecruitmentCandidate, RecruitmentFunnelStatus, RecruitmentSettings as RecruitmentSettingsType, SendQueueItem } from "@/lib/recruitment-types";
+import type {
+  ContactHistoryItem,
+  RecruitmentCandidate,
+  RecruitmentFunnelStatus,
+  RecruitmentPresentation,
+  RecruitmentPresentationCandidateStatus,
+  RecruitmentSettings as RecruitmentSettingsType,
+  SendQueueItem
+} from "@/lib/recruitment-types";
 import { getCandidates, saveCandidates } from "@/services/recruitment/candidates.service";
 import { getContactHistory, saveContactHistory } from "@/services/recruitment/history.service";
+import { getPresentations, savePresentationCandidate, savePresentations } from "@/services/recruitment/presentations.service";
 import { getQueue, saveQueue } from "@/services/recruitment/queue.service";
 import { loadSettings, saveSettings } from "@/services/recruitment/settings.service";
 import { analyzeBroker, analyzeClient } from "@/lib/scoring";
@@ -85,6 +94,7 @@ type ModuleKey =
   | "importar-candidatos"
   | "candidatos-recrutamento"
   | "fila-envio"
+  | "apresentacoes-recrutamento"
   | "historico-contatos"
   | "configuracoes-recrutamento";
 
@@ -123,6 +133,7 @@ const recruitmentNav: { key: ModuleKey; label: string }[] = [
   { key: "importar-candidatos", label: "Importar Candidatos" },
   { key: "candidatos-recrutamento", label: "Candidatos" },
   { key: "fila-envio", label: "Fila de Envio" },
+  { key: "apresentacoes-recrutamento", label: "Apresentacoes" },
   { key: "historico-contatos", label: "Historico de Contatos" },
   { key: "configuracoes-recrutamento", label: "Configuracoes" }
 ];
@@ -156,6 +167,7 @@ const titles: Record<ModuleKey, { eyebrow: string; title: string }> = {
   "importar-candidatos": { eyebrow: "Area de Recrutamento", title: "Importar Candidatos" },
   "candidatos-recrutamento": { eyebrow: "Area de Recrutamento", title: "Candidatos" },
   "fila-envio": { eyebrow: "Area de Recrutamento", title: "Fila de Envio" },
+  "apresentacoes-recrutamento": { eyebrow: "Area de Recrutamento", title: "Apresentacoes" },
   "historico-contatos": { eyebrow: "Area de Recrutamento", title: "Historico de Contatos" },
   "configuracoes-recrutamento": { eyebrow: "Area de Recrutamento", title: "Configuracoes" }
 };
@@ -385,6 +397,13 @@ const candidateQuickFunnelActions: RecruitmentFunnelStatus[] = [
   "Telefone inválido"
 ];
 
+const participationOptions: RecruitmentPresentationCandidateStatus[] = [
+  "confirmou_presenca",
+  "compareceu",
+  "nao_compareceu",
+  "sem_interesse"
+];
+
 function getFunnelStatusClass(status: RecruitmentFunnelStatus) {
   if (status === "Confirmou interesse") return "bg-success/10 text-success";
   if (status === "Apresentação agendada") return "bg-gold/15 text-navy";
@@ -392,6 +411,37 @@ function getFunnelStatusClass(status: RecruitmentFunnelStatus) {
   if (status === "Sem interesse") return "bg-danger/10 text-danger";
   if (status === "Telefone inválido") return "bg-danger/10 text-danger";
   return "bg-mist text-navy";
+}
+
+function createLocalId(prefix: string) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getParticipationLabel(status: RecruitmentPresentationCandidateStatus) {
+  const labels: Record<RecruitmentPresentationCandidateStatus, string> = {
+    agendado: "Agendado",
+    confirmou_presenca: "Confirmou presenca",
+    compareceu: "Compareceu",
+    nao_compareceu: "Nao compareceu",
+    sem_interesse: "Sem interesse"
+  };
+  return labels[status];
+}
+
+function getFunnelStatusFromParticipation(status: RecruitmentPresentationCandidateStatus): RecruitmentFunnelStatus {
+  if (status === "compareceu") return "Compareceu";
+  if (status === "nao_compareceu") return "Não compareceu";
+  if (status === "sem_interesse") return "Sem interesse";
+  return "Confirmou interesse";
+}
+
+function getDefaultPresentationDate() {
+  const nextDate = new Date();
+  const currentDay = nextDate.getDay();
+  const daysUntilTuesday = (2 - currentDay + 7) % 7 || 7;
+  nextDate.setDate(nextDate.getDate() + daysUntilTuesday);
+  return getLocalDateKey(nextDate);
 }
 
 function getCandidateKey(candidate: Pick<RecruitmentCandidate, "telefone" | "email" | "nome">) {
@@ -425,6 +475,7 @@ async function loadRecruitmentDataSnapshot() {
   let nextQueue = stored.queue ?? sendQueue;
   let nextHistory = stored.history ?? contactHistory;
   let nextSettings = normalizeRecruitmentSettings(stored.settings ?? defaultRecruitmentSettings);
+  let nextPresentations = stored.presentations ?? [];
 
   try {
     const supabaseCandidates = await getCandidates();
@@ -454,11 +505,19 @@ async function loadRecruitmentDataSnapshot() {
     console.error("Falha ao carregar recruitment_settings do Supabase. Usando localStorage.", error);
   }
 
+  try {
+    const supabasePresentations = await getPresentations();
+    if (supabasePresentations.length) nextPresentations = supabasePresentations;
+  } catch (error) {
+    console.error("Falha ao carregar recruitment_presentations do Supabase. Usando localStorage.", error);
+  }
+
   return {
     candidates: nextCandidates,
     queue: nextQueue,
     history: nextHistory,
-    settings: nextSettings
+    settings: nextSettings,
+    presentations: nextPresentations
   };
 }
 
@@ -523,6 +582,14 @@ export default function Page() {
   const [contactHistoryRows, setContactHistoryRows] = useState<ContactHistoryItem[]>(contactHistory);
   const [recruitmentSettingsState, setRecruitmentSettingsState] = useState<RecruitmentSettingsType>(defaultRecruitmentSettings);
   const [settingsDraft, setSettingsDraft] = useState<RecruitmentSettingsType>(defaultRecruitmentSettings);
+  const [presentationRows, setPresentationRows] = useState<RecruitmentPresentation[]>([]);
+  const [presentationDraft, setPresentationDraft] = useState({
+    titulo: "Apresentacao Home Life",
+    data: getDefaultPresentationDate(),
+    horario: defaultRecruitmentSettings.horarioApresentacao,
+    observacao: ""
+  });
+  const [selectedPresentationId, setSelectedPresentationId] = useState("");
   const [storageReady, setStorageReady] = useState(false);
   const [isRecruitmentRefreshing, setIsRecruitmentRefreshing] = useState(false);
   const [sendingQueueItemId, setSendingQueueItemId] = useState<number | null>(null);
@@ -566,6 +633,8 @@ export default function Page() {
       setContactHistoryRows(nextData.history);
       setRecruitmentSettingsState(nextData.settings);
       setSettingsDraft(nextData.settings);
+      setPresentationRows(nextData.presentations);
+      setSelectedPresentationId(nextData.presentations[0]?.id || "");
       setStorageReady(true);
     }
 
@@ -582,9 +651,10 @@ export default function Page() {
       candidates: importRows,
       queue: generatedQueue,
       history: contactHistoryRows,
-      settings: recruitmentSettingsState
+      settings: recruitmentSettingsState,
+      presentations: presentationRows
     });
-  }, [contactHistoryRows, generatedQueue, importRows, recruitmentSettingsState, storageReady]);
+  }, [contactHistoryRows, generatedQueue, importRows, presentationRows, recruitmentSettingsState, storageReady]);
 
   async function handleRefreshRecruitmentData() {
     setIsRecruitmentRefreshing(true);
@@ -595,6 +665,8 @@ export default function Page() {
       setContactHistoryRows(nextData.history);
       setRecruitmentSettingsState(nextData.settings);
       setSettingsDraft(nextData.settings);
+      setPresentationRows(nextData.presentations);
+      setSelectedPresentationId(nextData.presentations[0]?.id || "");
       saveRecruitmentStorage(nextData);
     } finally {
       setIsRecruitmentRefreshing(false);
@@ -869,6 +941,163 @@ export default function Page() {
     }
   }
 
+  async function handleCreatePresentation() {
+    const presentation: RecruitmentPresentation = {
+      id: createLocalId("presentation"),
+      titulo: presentationDraft.titulo.trim() || "Apresentacao Home Life",
+      data: presentationDraft.data || getDefaultPresentationDate(),
+      horario: presentationDraft.horario || defaultRecruitmentSettings.horarioApresentacao,
+      status: "agendada",
+      observacao: presentationDraft.observacao,
+      candidates: []
+    };
+    const nextPresentations = [...presentationRows, presentation].sort((a, b) => `${a.data} ${a.horario}`.localeCompare(`${b.data} ${b.horario}`));
+
+    setPresentationRows(nextPresentations);
+    setSelectedPresentationId(presentation.id);
+    setPresentationDraft({
+      titulo: "Apresentacao Home Life",
+      data: getDefaultPresentationDate(),
+      horario: recruitmentSettingsState.horarioApresentacao,
+      observacao: ""
+    });
+
+    try {
+      await savePresentations(nextPresentations);
+    } catch (error) {
+      console.error("Falha ao salvar apresentacao no Supabase. Mantendo fluxo localStorage.", error);
+    }
+  }
+
+  async function handleLinkCandidateToPresentation(candidate: RecruitmentCandidate, presentationId: string) {
+    const presentation = presentationRows.find((item) => item.id === presentationId);
+    if (!presentation) return;
+
+    const normalizedPhone = normalizeQueuePhone(candidate.telefone);
+    const linkedCandidate = {
+      id: createLocalId("presentation-candidate"),
+      presentationId: presentation.id,
+      nome: candidate.nome,
+      telefone: candidate.telefone,
+      email: candidate.email,
+      fonte: candidate.fonte,
+      statusParticipacao: "agendado" as const
+    };
+    const nextPresentations = presentationRows.map((item) => {
+      if (item.id !== presentation.id) return item;
+      const alreadyLinked = item.candidates.some((linked) => normalizeQueuePhone(linked.telefone) === normalizedPhone);
+      return alreadyLinked ? item : { ...item, candidates: [...item.candidates, linkedCandidate] };
+    });
+    const updatedCandidates = (importRows.length ? importRows : candidateList).map((item) =>
+      getCandidateKey(item) === getCandidateKey(candidate) ? { ...item, funilStatus: "Apresentação agendada" as const } : item
+    );
+    const dataEnvio = new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    const historyItem: ContactHistoryItem = {
+      nome: candidate.nome,
+      telefone: candidate.telefone,
+      fonte: candidate.fonte,
+      data_envio: dataEnvio,
+      data_apresentacao: `${presentation.data} ${presentation.horario}`,
+      status: "alteracao_funil",
+      mensagem: `Candidato vinculado manualmente a apresentacao ${presentation.titulo}.`,
+      data: dataEnvio,
+      origem: "Manual",
+      funilStatus: "Apresentação agendada",
+      presentationId: presentation.id,
+      presentationTitle: presentation.titulo,
+      dataApresentacao: presentation.data,
+      horarioApresentacao: presentation.horario,
+      participationStatus: "agendado"
+    };
+
+    setPresentationRows(nextPresentations);
+    setImportRows(updatedCandidates);
+    setContactHistoryRows((current) => [historyItem, ...current]);
+
+    try {
+      await savePresentationCandidate(linkedCandidate);
+      await savePresentations(nextPresentations);
+    } catch (error) {
+      console.error("Falha ao vincular candidato a apresentacao no Supabase. Mantendo fluxo localStorage.", error);
+    }
+
+    try {
+      await saveCandidates(updatedCandidates);
+      await saveContactHistory([historyItem]);
+    } catch (error) {
+      console.error("Falha ao salvar historico/vinculo de apresentacao no Supabase. Mantendo fluxo localStorage.", error);
+    }
+  }
+
+  async function handlePresentationParticipationChange(
+    presentation: RecruitmentPresentation,
+    candidatePhone: string,
+    nextStatus: RecruitmentPresentationCandidateStatus
+  ) {
+    const linkedCandidate = presentation.candidates.find((candidate) => normalizeQueuePhone(candidate.telefone) === normalizeQueuePhone(candidatePhone));
+    if (!linkedCandidate || linkedCandidate.statusParticipacao === nextStatus) return;
+
+    const nextFunnelStatus = getFunnelStatusFromParticipation(nextStatus);
+    const nextPresentations = presentationRows.map((item) =>
+      item.id === presentation.id
+        ? {
+            ...item,
+            candidates: item.candidates.map((candidate) =>
+              normalizeQueuePhone(candidate.telefone) === normalizeQueuePhone(candidatePhone)
+                ? { ...candidate, statusParticipacao: nextStatus }
+                : candidate
+            )
+          }
+        : item
+    );
+    const updatedCandidates = (importRows.length ? importRows : candidateList).map((item) =>
+      normalizeQueuePhone(item.telefone) === normalizeQueuePhone(candidatePhone) ? { ...item, funilStatus: nextFunnelStatus } : item
+    );
+    const dataEnvio = new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    const historyItem: ContactHistoryItem = {
+      nome: linkedCandidate.nome,
+      telefone: linkedCandidate.telefone,
+      fonte: linkedCandidate.fonte || "",
+      data_envio: dataEnvio,
+      data_apresentacao: `${presentation.data} ${presentation.horario}`,
+      status: "alteracao_funil",
+      mensagem: `Participacao na apresentacao alterada para ${getParticipationLabel(nextStatus)}.`,
+      data: dataEnvio,
+      origem: "Manual",
+      funilStatus: nextFunnelStatus,
+      presentationId: presentation.id,
+      presentationTitle: presentation.titulo,
+      dataApresentacao: presentation.data,
+      horarioApresentacao: presentation.horario,
+      participationStatus: nextStatus
+    };
+
+    setPresentationRows(nextPresentations);
+    setImportRows(updatedCandidates);
+    setContactHistoryRows((current) => [historyItem, ...current]);
+
+    try {
+      await savePresentations(nextPresentations);
+      await saveCandidates(updatedCandidates);
+      await saveContactHistory([historyItem]);
+    } catch (error) {
+      console.error("Falha ao salvar participacao da apresentacao no Supabase. Mantendo fluxo localStorage.", error);
+    }
+  }
+
+  async function handlePresentationStatusChange(presentationId: string, nextStatus: RecruitmentPresentation["status"]) {
+    const nextPresentations = presentationRows.map((presentation) =>
+      presentation.id === presentationId ? { ...presentation, status: nextStatus } : presentation
+    );
+    setPresentationRows(nextPresentations);
+
+    try {
+      await savePresentations(nextPresentations);
+    } catch (error) {
+      console.error("Falha ao salvar status da apresentacao no Supabase. Mantendo fluxo localStorage.", error);
+    }
+  }
+
   function normalizePresentationDays(value: string) {
     return value
       .split(/,| e /)
@@ -905,6 +1134,8 @@ export default function Page() {
     setContactHistoryRows(contactHistory);
     setRecruitmentSettingsState(defaultRecruitmentSettings);
     setSettingsDraft(defaultRecruitmentSettings);
+    setPresentationRows([]);
+    setSelectedPresentationId("");
 
     try {
       await saveSettings(defaultRecruitmentSettings);
@@ -1192,7 +1423,7 @@ export default function Page() {
   function CandidateTable({ rows, editableFunnel = false }: { rows: RecruitmentCandidate[]; editableFunnel?: boolean }) {
     return (
       <div className="overflow-x-auto thin-scrollbar">
-        <table className="w-full min-w-[1420px] text-left text-sm">
+        <table className="w-full min-w-[1680px] text-left text-sm">
           <thead className="bg-mist text-xs uppercase tracking-normal text-steel">
             <tr>
               <th className="px-5 py-3">Nome</th>
@@ -1203,6 +1434,7 @@ export default function Page() {
               <th className="px-5 py-3">Fonte</th>
               <th className="px-5 py-3">Status</th>
               <th className="px-5 py-3">Funil</th>
+              {editableFunnel ? <th className="px-5 py-3">Apresentacao</th> : null}
               {editableFunnel ? <th className="px-5 py-3">Ações rápidas</th> : null}
             </tr>
           </thead>
@@ -1245,6 +1477,33 @@ export default function Page() {
                   </td>
                   {editableFunnel ? (
                     <td className="px-5 py-4">
+                      <div className="flex min-w-[260px] flex-wrap gap-2">
+                        <select
+                          className="h-9 min-w-[170px] rounded-md border border-line bg-white px-3 text-xs font-semibold text-navy outline-none"
+                          value={selectedPresentationId}
+                          onChange={(event) => setSelectedPresentationId(event.target.value)}
+                          disabled={!presentationRows.length}
+                        >
+                          <option value="">{presentationRows.length ? "Selecionar turma" : "Criar turma primeiro"}</option>
+                          {presentationRows.map((presentation) => (
+                            <option key={presentation.id} value={presentation.id}>
+                              {presentation.titulo} - {presentation.data} {presentation.horario}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => handleLinkCandidateToPresentation(candidate, selectedPresentationId)}
+                          disabled={!selectedPresentationId}
+                          className="h-9 rounded-md border border-line bg-white px-3 text-xs font-semibold text-navy transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Vincular
+                        </button>
+                      </div>
+                    </td>
+                  ) : null}
+                  {editableFunnel ? (
+                    <td className="px-5 py-4">
                       <div className="flex max-w-[420px] flex-wrap gap-2">
                         {candidateQuickFunnelActions.map((status) => (
                           <button
@@ -1276,6 +1535,17 @@ export default function Page() {
   function RecruitmentDashboard() {
     const countFunnelStatus = (status: RecruitmentFunnelStatus) =>
       importRows.filter((candidate) => getCandidateFunnelStatus(candidate) === status).length;
+    const todayKey = getLocalDateKey();
+    const futurePresentations = presentationRows.filter((presentation) => presentation.status === "agendada" && presentation.data >= todayKey).length;
+    const scheduledPresentationCandidates = presentationRows.reduce((total, presentation) => total + presentation.candidates.length, 0);
+    const attendedPresentationCandidates = presentationRows.reduce(
+      (total, presentation) => total + presentation.candidates.filter((candidate) => candidate.statusParticipacao === "compareceu").length,
+      0
+    );
+    const missedPresentationCandidates = presentationRows.reduce(
+      (total, presentation) => total + presentation.candidates.filter((candidate) => candidate.statusParticipacao === "nao_compareceu").length,
+      0
+    );
 
     return (
       <>
@@ -1291,6 +1561,10 @@ export default function Page() {
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Metric label="Total de candidatos" value={String(importRows.length)} icon={Users} detail="Base carregada" />
+          <Metric label="Apresentacoes futuras" value={String(futurePresentations)} icon={Target} detail="Turmas agendadas" />
+          <Metric label="Candidatos agendados" value={String(scheduledPresentationCandidates)} icon={Users} detail="Vinculados a turmas" />
+          <Metric label="Compareceram em turmas" value={String(attendedPresentationCandidates)} icon={Gauge} detail="Controle de apresentacao" />
+          <Metric label="Nao compareceram em turmas" value={String(missedPresentationCandidates)} icon={FileText} detail="Acompanhamento" />
           <Metric label="WhatsApp enviados" value={String(countFunnelStatus("WhatsApp enviado"))} icon={BadgeCheck} detail="Primeiro contato feito" />
           <Metric label="Responderam" value={String(countFunnelStatus("Respondeu"))} icon={Activity} detail="Retorno manual registrado" />
           <Metric label="Confirmaram interesse" value={String(countFunnelStatus("Confirmou interesse"))} icon={CheckCircle2} detail="Avancar acompanhamento" />
@@ -1450,6 +1724,136 @@ export default function Page() {
     );
   }
 
+  function Presentations() {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <SectionTitle icon={Target} title="Criar apresentacao" />
+          <div className="grid gap-4 border-t border-line p-5 md:grid-cols-2 xl:grid-cols-4">
+            <label className="block">
+              <span className="text-xs font-medium uppercase tracking-normal text-steel">Titulo</span>
+              <input
+                className="mt-2 h-10 w-full rounded-md border border-line px-3 text-sm font-semibold text-ink outline-none"
+                value={presentationDraft.titulo}
+                onChange={(event) => setPresentationDraft((current) => ({ ...current, titulo: event.target.value }))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium uppercase tracking-normal text-steel">Data</span>
+              <input
+                type="date"
+                className="mt-2 h-10 w-full rounded-md border border-line px-3 text-sm font-semibold text-ink outline-none"
+                value={presentationDraft.data}
+                onChange={(event) => setPresentationDraft((current) => ({ ...current, data: event.target.value }))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium uppercase tracking-normal text-steel">Horario</span>
+              <input
+                className="mt-2 h-10 w-full rounded-md border border-line px-3 text-sm font-semibold text-ink outline-none"
+                value={presentationDraft.horario}
+                onChange={(event) => setPresentationDraft((current) => ({ ...current, horario: event.target.value }))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium uppercase tracking-normal text-steel">Observacao</span>
+              <input
+                className="mt-2 h-10 w-full rounded-md border border-line px-3 text-sm font-semibold text-ink outline-none"
+                value={presentationDraft.observacao}
+                onChange={(event) => setPresentationDraft((current) => ({ ...current, observacao: event.target.value }))}
+              />
+            </label>
+          </div>
+          <div className="border-t border-line p-5">
+            <button type="button" onClick={handleCreatePresentation} className="h-10 rounded-md bg-navy px-4 text-sm font-semibold text-white transition hover:bg-ocean">
+              Criar apresentacao
+            </button>
+          </div>
+        </Card>
+
+        <Card>
+          <SectionTitle icon={Users} title="Apresentacoes" />
+          <div className="space-y-4 border-t border-line p-5">
+            {presentationRows.length ? presentationRows.map((presentation) => (
+              <div key={presentation.id} className="rounded-lg border border-line p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="font-semibold text-ink">{presentation.titulo}</p>
+                    <p className="mt-1 text-sm text-steel">{presentation.data} as {presentation.horario}</p>
+                    <p className="mt-1 text-sm text-steel">{presentation.observacao || "Sem observacao"}</p>
+                    <p className="mt-2 text-xs font-semibold text-navy">{presentation.candidates.length} candidato(s) vinculado(s)</p>
+                  </div>
+                  <select
+                    className="h-9 rounded-md border border-line bg-white px-3 text-xs font-semibold text-navy outline-none"
+                    value={presentation.status}
+                    onChange={(event) => handlePresentationStatusChange(presentation.id, event.target.value as RecruitmentPresentation["status"])}
+                  >
+                    <option value="agendada">Agendada</option>
+                    <option value="realizada">Realizada</option>
+                    <option value="cancelada">Cancelada</option>
+                  </select>
+                </div>
+
+                <div className="mt-4 overflow-x-auto thin-scrollbar">
+                  <table className="w-full min-w-[820px] text-left text-sm">
+                    <thead className="bg-mist text-xs uppercase tracking-normal text-steel">
+                      <tr>
+                        <th className="px-4 py-3">Nome</th>
+                        <th className="px-4 py-3">Telefone</th>
+                        <th className="px-4 py-3">Fonte</th>
+                        <th className="px-4 py-3">Participacao</th>
+                        <th className="px-4 py-3">Acoes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {presentation.candidates.length ? presentation.candidates.map((candidate) => (
+                        <tr key={candidate.id}>
+                          <td className="px-4 py-3 font-semibold text-ink">{candidate.nome}</td>
+                          <td className="px-4 py-3">{candidate.telefone}</td>
+                          <td className="px-4 py-3">{candidate.fonte || "-"}</td>
+                          <td className="px-4 py-3">
+                            <span className="rounded-md bg-mist px-2 py-1 text-xs font-semibold text-navy">
+                              {getParticipationLabel(candidate.statusParticipacao)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              {participationOptions.map((status) => (
+                                <button
+                                  key={status}
+                                  type="button"
+                                  onClick={() => handlePresentationParticipationChange(presentation, candidate.telefone, status)}
+                                  disabled={candidate.statusParticipacao === status}
+                                  className="h-8 rounded-md border border-line bg-white px-2 text-[11px] font-semibold text-navy transition hover:border-gold disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {getParticipationLabel(status)}
+                                </button>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )) : (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-6 text-center text-sm text-steel">
+                            Nenhum candidato vinculado ainda.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-lg border border-dashed border-line p-6 text-sm text-steel">
+                Nenhuma apresentacao criada ainda.
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   function ContactHistory() {
     return (
       <Card>
@@ -1465,6 +1869,8 @@ export default function Page() {
               <p className="mt-1 text-xs text-steel">Apresentacao: {item.data_apresentacao}</p>
               {item.origem ? <p className="mt-1 text-xs text-steel">Origem: {item.origem}</p> : null}
               {item.funilStatus ? <p className="mt-1 text-xs font-semibold text-navy">Funil: {item.funilStatus}</p> : null}
+              {item.presentationTitle ? <p className="mt-1 text-xs text-steel">Apresentacao: {item.presentationTitle}</p> : null}
+              {item.participationStatus ? <p className="mt-1 text-xs text-steel">Participacao: {getParticipationLabel(item.participationStatus)}</p> : null}
               {item.templateLabel ? <p className="mt-1 text-xs text-steel">Template: {item.templateLabel}</p> : null}
               {item.messageId ? <p className="mt-1 break-all text-xs text-steel">MessageId: {item.messageId}</p> : null}
               <p className="mt-3 text-xs leading-5 text-steel">{item.mensagem}</p>
@@ -1575,6 +1981,7 @@ export default function Page() {
     if (active === "importar-candidatos") return <ImportCandidates />;
     if (active === "candidatos-recrutamento") return <RecruitmentCandidates />;
     if (active === "fila-envio") return <SendQueue />;
+    if (active === "apresentacoes-recrutamento") return <Presentations />;
     if (active === "historico-contatos") return <ContactHistory />;
     return <RecruitmentSettings />;
   }

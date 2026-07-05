@@ -1,4 +1,13 @@
-import type { ContactHistoryItem, RecruitmentCandidate, RecruitmentSettings, SendQueueItem } from "./recruitment-types";
+import type {
+  ContactHistoryItem,
+  RecruitmentCandidate,
+  RecruitmentPresentation,
+  RecruitmentPresentationCandidate,
+  RecruitmentPresentationCandidateStatus,
+  RecruitmentPresentationStatus,
+  RecruitmentSettings,
+  SendQueueItem
+} from "./recruitment-types";
 
 export type RecruitmentCandidateRow = {
   nome: string;
@@ -51,6 +60,33 @@ export type RecruitmentSettingsRow = {
   dias_apresentacao: string[];
   horario_apresentacao: string;
   raw?: Record<string, unknown>;
+};
+
+export type RecruitmentPresentationRow = {
+  id: string;
+  titulo: string;
+  data: string;
+  horario: string;
+  status: RecruitmentPresentationStatus;
+  observacao?: string | null;
+  raw?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type RecruitmentPresentationCandidateRow = {
+  id: string;
+  presentation_id: string;
+  candidate_id?: string | null;
+  nome?: string;
+  telefone?: string;
+  telefone_normalizado: string;
+  email?: string | null;
+  fonte?: string | null;
+  status_participacao: RecruitmentPresentationCandidateStatus;
+  raw?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export function normalizePhone(value: string) {
@@ -148,7 +184,10 @@ export function historyRowToContactHistoryItem(row: RecruitmentContactHistoryRow
     templateName: typeof rawHistory?.templateName === "string" ? rawHistory.templateName : undefined,
     templateLabel: typeof rawHistory?.templateLabel === "string" ? rawHistory.templateLabel : undefined,
     dataApresentacao: typeof rawHistory?.dataApresentacao === "string" ? rawHistory.dataApresentacao : undefined,
-    horarioApresentacao: typeof rawHistory?.horarioApresentacao === "string" ? rawHistory.horarioApresentacao : undefined
+    horarioApresentacao: typeof rawHistory?.horarioApresentacao === "string" ? rawHistory.horarioApresentacao : undefined,
+    presentationId: typeof rawHistory?.presentationId === "string" ? rawHistory.presentationId : undefined,
+    presentationTitle: typeof rawHistory?.presentationTitle === "string" ? rawHistory.presentationTitle : undefined,
+    participationStatus: rawHistory?.participationStatus
   };
 }
 
@@ -195,5 +234,64 @@ export function recruitmentSettingsToDbUpsert(settings: RecruitmentSettings): Re
     dias_apresentacao: settings.diasApresentacao,
     horario_apresentacao: settings.horarioApresentacao,
     raw: settings
+  };
+}
+
+export function presentationRowToRecruitmentPresentation(
+  row: RecruitmentPresentationRow,
+  candidates: RecruitmentPresentationCandidate[] = []
+): RecruitmentPresentation {
+  return {
+    id: row.id,
+    titulo: row.titulo,
+    data: row.data,
+    horario: row.horario,
+    status: row.status,
+    observacao: row.observacao || "",
+    candidates,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function recruitmentPresentationToDbUpsert(presentation: RecruitmentPresentation): RecruitmentPresentationRow {
+  return {
+    id: presentation.id,
+    titulo: presentation.titulo,
+    data: presentation.data,
+    horario: presentation.horario,
+    status: presentation.status,
+    observacao: presentation.observacao,
+    raw: presentation
+  };
+}
+
+export function presentationCandidateRowToRecruitmentPresentationCandidate(
+  row: RecruitmentPresentationCandidateRow
+): RecruitmentPresentationCandidate {
+  const rawCandidate = row.raw as Partial<RecruitmentPresentationCandidate> | undefined;
+
+  return {
+    id: row.id,
+    presentationId: row.presentation_id,
+    nome: row.nome || rawCandidate?.nome || "",
+    telefone: row.telefone || rawCandidate?.telefone || row.telefone_normalizado,
+    email: row.email || rawCandidate?.email || "",
+    fonte: row.fonte || rawCandidate?.fonte || "",
+    statusParticipacao: row.status_participacao,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function recruitmentPresentationCandidateToDbUpsert(
+  candidate: RecruitmentPresentationCandidate
+): RecruitmentPresentationCandidateRow {
+  return {
+    id: candidate.id,
+    presentation_id: candidate.presentationId,
+    telefone_normalizado: normalizePhone(candidate.telefone),
+    status_participacao: candidate.statusParticipacao,
+    raw: candidate
   };
 }
