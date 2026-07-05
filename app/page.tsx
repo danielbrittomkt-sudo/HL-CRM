@@ -91,6 +91,7 @@ type ModuleKey =
   | "relatorios-conversao"
   | "inteligencia-compra"
   | "dashboard-recrutamento"
+  | "operacao-dia"
   | "importar-candidatos"
   | "candidatos-recrutamento"
   | "fila-envio"
@@ -130,6 +131,7 @@ const clientNav: { key: ModuleKey; label: string }[] = [
 
 const recruitmentNav: { key: ModuleKey; label: string }[] = [
   { key: "dashboard-recrutamento", label: "Dashboard Recrutamento" },
+  { key: "operacao-dia", label: "Operacao do Dia" },
   { key: "importar-candidatos", label: "Importar Candidatos" },
   { key: "candidatos-recrutamento", label: "Candidatos" },
   { key: "fila-envio", label: "Fila de Envio" },
@@ -164,6 +166,7 @@ const titles: Record<ModuleKey, { eyebrow: string; title: string }> = {
   "relatorios-conversao": { eyebrow: "Area de Clientes", title: "Relatorios de Conversao" },
   "inteligencia-compra": { eyebrow: "Area de Clientes", title: "Inteligencia de Compra" },
   "dashboard-recrutamento": { eyebrow: "Area de Recrutamento", title: "Dashboard Recrutamento" },
+  "operacao-dia": { eyebrow: "Area de Recrutamento", title: "Operacao do Dia" },
   "importar-candidatos": { eyebrow: "Area de Recrutamento", title: "Importar Candidatos" },
   "candidatos-recrutamento": { eyebrow: "Area de Recrutamento", title: "Candidatos" },
   "fila-envio": { eyebrow: "Area de Recrutamento", title: "Fila de Envio" },
@@ -1532,6 +1535,158 @@ export default function Page() {
     );
   }
 
+  function CandidateQuickActions({ candidate }: { candidate: RecruitmentCandidate }) {
+    const funnelStatus = getCandidateFunnelStatus(candidate);
+
+    return (
+      <div className="flex flex-wrap gap-2">
+        {candidateQuickFunnelActions.map((status) => (
+          <button
+            key={status}
+            type="button"
+            onClick={() => handleCandidateFunnelStatusChange(candidate, status)}
+            disabled={funnelStatus === status}
+            className={`h-8 rounded-md border px-2 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+              funnelStatus === status
+                ? "border-navy bg-navy text-white"
+                : "border-line bg-white text-navy hover:border-gold"
+            }`}
+          >
+            {status}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function OperationCandidateList({ title, rows }: { title: string; rows: RecruitmentCandidate[] }) {
+    return (
+      <Card>
+        <SectionTitle icon={Users} title={title} />
+        <div className="space-y-3 border-t border-line p-5">
+          {rows.length ? rows.map((candidate) => {
+            const funnelStatus = getCandidateFunnelStatus(candidate);
+
+            return (
+              <div key={`${candidate.telefone}-${candidate.email}-${title}`} className="rounded-lg border border-line p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-ink">{candidate.nome}</p>
+                    <p className="mt-1 text-sm text-steel">{candidate.telefone}</p>
+                    <p className="mt-1 text-xs text-steel">{candidate.fonte || "Sem fonte"}</p>
+                  </div>
+                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${getFunnelStatusClass(funnelStatus)}`}>
+                    {funnelStatus}
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <CandidateQuickActions candidate={candidate} />
+                </div>
+              </div>
+            );
+          }) : (
+            <div className="rounded-lg border border-dashed border-line p-5 text-sm text-steel">
+              Nenhum candidato nesta lista.
+            </div>
+          )}
+        </div>
+      </Card>
+    );
+  }
+
+  function OperationDay() {
+    const todayKey = getLocalDateKey();
+    const candidateRows = importRows.length ? importRows : candidateList;
+    const candidateByPhone = new Map(candidateRows.map((candidate) => [normalizeQueuePhone(candidate.telefone), candidate]));
+    const pendingQueueToday = generatedQueue.filter((item) => item.status_envio === "pendente_envio");
+    const whatsappSentToday = contactHistoryRows.filter((item) => isWhatsAppHistoryForDate(item, todayKey));
+    const presentationsToday = presentationRows.filter((presentation) => presentation.data === todayKey);
+    const scheduledTodayCandidates = presentationsToday.flatMap((presentation) => presentation.candidates);
+    const confirmedInterestCandidates = candidateRows.filter((candidate) => getCandidateFunnelStatus(candidate) === "Confirmou interesse");
+    const notRespondedCandidates = candidateRows.filter((candidate) => getCandidateFunnelStatus(candidate) === "WhatsApp enviado");
+    const missedCandidates = candidateRows.filter((candidate) => getCandidateFunnelStatus(candidate) === "Não compareceu");
+    const followUpCandidates = candidateRows.filter((candidate) =>
+      ["WhatsApp enviado", "Respondeu", "Confirmou interesse", "Não compareceu"].includes(getCandidateFunnelStatus(candidate))
+    );
+
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Metric label="Para contatar hoje" value={String(pendingQueueToday.length)} icon={Users} detail="Fila pendente" />
+          <Metric label="WhatsApps enviados hoje" value={String(whatsappSentToday.length)} icon={BadgeCheck} detail="Historico do dia" />
+          <Metric label="Apresentacoes de hoje" value={String(presentationsToday.length)} icon={Target} detail="Turmas do dia" />
+          <Metric label="Agendados hoje" value={String(scheduledTodayCandidates.length)} icon={Activity} detail="Candidatos em turmas" />
+          <Metric label="Confirmaram interesse" value={String(confirmedInterestCandidates.length)} icon={CheckCircle2} detail="Prontos para agendar" />
+          <Metric label="Nao responderam" value={String(notRespondedCandidates.length)} icon={Filter} detail="Follow-up leve" />
+          <Metric label="Nao compareceram" value={String(missedCandidates.length)} icon={FileText} detail="Reativar ou encerrar" />
+          <Metric label="Para follow-up" value={String(followUpCandidates.length)} icon={Gauge} detail="Acoes manuais" />
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Card>
+            <SectionTitle icon={Users} title="Candidatos para contatar hoje" />
+            <div className="space-y-3 border-t border-line p-5">
+              {pendingQueueToday.length ? pendingQueueToday.map((item) => {
+                const candidate = candidateByPhone.get(normalizeQueuePhone(item.telefone));
+
+                return (
+                  <div key={`${item.telefone}-${item.id}`} className="rounded-lg border border-line p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-ink">{item.nome}</p>
+                        <p className="mt-1 text-sm text-steel">{item.telefone}</p>
+                        <p className="mt-1 text-xs text-steel">Apresentacao sugerida: {item.apresentacao} {item.horario_apresentacao}</p>
+                      </div>
+                      <span className="rounded-md bg-mist px-2 py-1 text-xs font-semibold text-navy">{item.status_envio}</span>
+                    </div>
+                    {candidate ? <div className="mt-3"><CandidateQuickActions candidate={candidate} /></div> : null}
+                  </div>
+                );
+              }) : (
+                <div className="rounded-lg border border-dashed border-line p-5 text-sm text-steel">
+                  Nenhum candidato pendente na fila.
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <SectionTitle icon={Target} title="Apresentacoes de hoje" />
+            <div className="space-y-3 border-t border-line p-5">
+              {presentationsToday.length ? presentationsToday.map((presentation) => {
+                const attended = presentation.candidates.filter((candidate) => candidate.statusParticipacao === "compareceu").length;
+                const missed = presentation.candidates.filter((candidate) => candidate.statusParticipacao === "nao_compareceu").length;
+
+                return (
+                  <div key={presentation.id} className="rounded-lg border border-line p-4">
+                    <p className="font-semibold text-ink">{presentation.titulo}</p>
+                    <p className="mt-1 text-sm text-steel">{presentation.data} as {presentation.horario}</p>
+                    <div className="mt-3 grid gap-2 text-xs font-semibold text-navy md:grid-cols-3">
+                      <span className="rounded-md bg-mist px-2 py-2">Vinculados: {presentation.candidates.length}</span>
+                      <span className="rounded-md bg-mist px-2 py-2">Compareceram: {attended}</span>
+                      <span className="rounded-md bg-mist px-2 py-2">Nao compareceram: {missed}</span>
+                    </div>
+                  </div>
+                );
+              }) : (
+                <div className="rounded-lg border border-dashed border-line p-5 text-sm text-steel">
+                  Nenhuma apresentacao para hoje.
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-2">
+          <OperationCandidateList title="Candidatos que confirmaram interesse" rows={confirmedInterestCandidates} />
+          <OperationCandidateList title="Candidatos que nao responderam" rows={notRespondedCandidates} />
+          <OperationCandidateList title="Candidatos que nao compareceram" rows={missedCandidates} />
+          <OperationCandidateList title="Candidatos para follow-up" rows={followUpCandidates} />
+        </div>
+      </div>
+    );
+  }
+
   function RecruitmentDashboard() {
     const countFunnelStatus = (status: RecruitmentFunnelStatus) =>
       importRows.filter((candidate) => getCandidateFunnelStatus(candidate) === status).length;
@@ -1978,6 +2133,7 @@ export default function Page() {
 
   function RecruitmentArea() {
     if (active === "dashboard-recrutamento") return <RecruitmentDashboard />;
+    if (active === "operacao-dia") return <OperationDay />;
     if (active === "importar-candidatos") return <ImportCandidates />;
     if (active === "candidatos-recrutamento") return <RecruitmentCandidates />;
     if (active === "fila-envio") return <SendQueue />;
