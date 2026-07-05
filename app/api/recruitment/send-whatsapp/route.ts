@@ -5,6 +5,9 @@ type SendWhatsAppPayload = {
   telefone?: unknown;
   mensagem?: unknown;
   nome?: unknown;
+  templateName?: unknown;
+  dataApresentacao?: unknown;
+  horarioApresentacao?: unknown;
 };
 
 function asText(value: unknown) {
@@ -17,12 +20,22 @@ export async function POST(request: NextRequest) {
     const telefone = asText(payload.telefone);
     const mensagem = asText(payload.mensagem);
     const nome = asText(payload.nome) || "candidato";
+    const templateName = asText(payload.templateName);
+    const dataApresentacao = asText(payload.dataApresentacao);
+    const horarioApresentacao = asText(payload.horarioApresentacao);
 
     if (!telefone || !mensagem) {
       return NextResponse.json({ success: false, error: "Telefone e mensagem sao obrigatorios" }, { status: 400 });
     }
 
-    const result = await sendWhatsAppMessage({ telefone, mensagem, nome });
+    const result = await sendWhatsAppMessage({
+      telefone,
+      mensagem,
+      nome,
+      templateName: templateName || undefined,
+      dataApresentacao: dataApresentacao || undefined,
+      horarioApresentacao: horarioApresentacao || undefined
+    });
     return NextResponse.json(result);
   } catch (error) {
     console.error("WHATSAPP_SEND_ERROR", error);

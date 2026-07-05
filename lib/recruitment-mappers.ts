@@ -144,7 +144,11 @@ export function historyRowToContactHistoryItem(row: RecruitmentContactHistoryRow
     origem: rawOrigem,
     messageId: typeof rawHistory?.messageId === "string" ? rawHistory.messageId : undefined,
     envioDateKey: typeof rawHistory?.envioDateKey === "string" ? rawHistory.envioDateKey : undefined,
-    funilStatus: rawHistory?.funilStatus
+    funilStatus: rawHistory?.funilStatus,
+    templateName: typeof rawHistory?.templateName === "string" ? rawHistory.templateName : undefined,
+    templateLabel: typeof rawHistory?.templateLabel === "string" ? rawHistory.templateLabel : undefined,
+    dataApresentacao: typeof rawHistory?.dataApresentacao === "string" ? rawHistory.dataApresentacao : undefined,
+    horarioApresentacao: typeof rawHistory?.horarioApresentacao === "string" ? rawHistory.horarioApresentacao : undefined
   };
 }
 

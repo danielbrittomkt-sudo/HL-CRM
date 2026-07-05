@@ -713,7 +713,10 @@ export default function Page() {
         body: JSON.stringify({
           telefone: queueItem.telefone,
           mensagem: "Mensagem enviada pelo CRM Home Life.",
-          nome: queueItem.nome
+          nome: queueItem.nome,
+          templateName: "h_crm_rh_2",
+          dataApresentacao: queueItem.apresentacao,
+          horarioApresentacao: queueItem.horario_apresentacao
         })
       });
       const result = (await response.json()) as {
@@ -721,6 +724,8 @@ export default function Page() {
         simulated?: boolean;
         provider?: string;
         messageId?: string;
+        templateName?: string;
+        templateLabel?: string;
         error?: string;
       };
 
@@ -749,7 +754,11 @@ export default function Page() {
         data: dataEnvio,
         origem: "WhatsApp",
         messageId: result.messageId,
-        envioDateKey
+        envioDateKey,
+        templateName: result.templateName || "h_crm_rh_2",
+        templateLabel: result.templateLabel || "Primeiro contato",
+        dataApresentacao: queueItem.apresentacao,
+        horarioApresentacao: queueItem.horario_apresentacao
       };
 
       setGeneratedQueue(updatedQueue);
@@ -1405,6 +1414,7 @@ export default function Page() {
               <p className="mt-1 text-xs text-steel">Apresentacao: {item.data_apresentacao}</p>
               {item.origem ? <p className="mt-1 text-xs text-steel">Origem: {item.origem}</p> : null}
               {item.funilStatus ? <p className="mt-1 text-xs font-semibold text-navy">Funil: {item.funilStatus}</p> : null}
+              {item.templateLabel ? <p className="mt-1 text-xs text-steel">Template: {item.templateLabel}</p> : null}
               {item.messageId ? <p className="mt-1 break-all text-xs text-steel">MessageId: {item.messageId}</p> : null}
               <p className="mt-3 text-xs leading-5 text-steel">{item.mensagem}</p>
             </div>

@@ -47,6 +47,10 @@ export type ContactHistoryItem = {
   messageId?: string;
   envioDateKey?: string;
   funilStatus?: RecruitmentFunnelStatus;
+  templateName?: string;
+  templateLabel?: string;
+  dataApresentacao?: string;
+  horarioApresentacao?: string;
 };
 
 export type RecruitmentSettings = {
