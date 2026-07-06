@@ -40,10 +40,10 @@ export type ContactHistoryItem = {
   fonte: string;
   data_envio: string;
   data_apresentacao: string;
-  status: "mensagem_enviada" | "erro_envio" | "confirmado" | "nao_respondeu" | "alteracao_funil";
+  status: "mensagem_enviada" | "erro_envio" | "confirmado" | "nao_respondeu" | "alteracao_funil" | "whatsapp_status";
   mensagem: string;
   data: string;
-  origem?: "WhatsApp" | "Simulacao" | "Manual";
+  origem?: "WhatsApp" | "Simulacao" | "Manual" | "WhatsApp Webhook";
   messageId?: string;
   envioDateKey?: string;
   funilStatus?: RecruitmentFunnelStatus;
@@ -54,6 +54,7 @@ export type ContactHistoryItem = {
   presentationId?: string;
   presentationTitle?: string;
   participationStatus?: RecruitmentPresentationCandidateStatus;
+  raw?: Record<string, unknown>;
 };
 
 export type RecruitmentPresentationStatus = "agendada" | "realizada" | "cancelada";

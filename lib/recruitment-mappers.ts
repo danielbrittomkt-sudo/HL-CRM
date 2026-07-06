@@ -166,7 +166,13 @@ export function sendQueueItemToDbInsert(item: SendQueueItem): RecruitmentQueueRo
 
 export function historyRowToContactHistoryItem(row: RecruitmentContactHistoryRow): ContactHistoryItem {
   const rawHistory = row.raw as Partial<ContactHistoryItem> | undefined;
-  const rawOrigem = rawHistory?.origem === "WhatsApp" || rawHistory?.origem === "Simulacao" || rawHistory?.origem === "Manual" ? rawHistory.origem : undefined;
+  const rawOrigem =
+    rawHistory?.origem === "WhatsApp" ||
+    rawHistory?.origem === "Simulacao" ||
+    rawHistory?.origem === "Manual" ||
+    rawHistory?.origem === "WhatsApp Webhook"
+      ? rawHistory.origem
+      : undefined;
 
   return {
     nome: row.nome,
@@ -187,7 +193,8 @@ export function historyRowToContactHistoryItem(row: RecruitmentContactHistoryRow
     horarioApresentacao: typeof rawHistory?.horarioApresentacao === "string" ? rawHistory.horarioApresentacao : undefined,
     presentationId: typeof rawHistory?.presentationId === "string" ? rawHistory.presentationId : undefined,
     presentationTitle: typeof rawHistory?.presentationTitle === "string" ? rawHistory.presentationTitle : undefined,
-    participationStatus: rawHistory?.participationStatus
+    participationStatus: rawHistory?.participationStatus,
+    raw: row.raw
   };
 }
 
