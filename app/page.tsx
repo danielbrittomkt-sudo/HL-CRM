@@ -133,7 +133,6 @@ const clientNav: { key: ModuleKey; label: string }[] = [
 const recruitmentNav: { key: ModuleKey; label: string }[] = [
   { key: "dashboard-recrutamento", label: "Dashboard Recrutamento" },
   { key: "operacao-dia", label: "Operação do Dia" },
-  { key: "importar-candidatos", label: "Importar Candidatos" },
   { key: "candidatos-recrutamento", label: "Candidatos" },
   { key: "fila-envio", label: "Fila de Envio" },
   { key: "apresentacoes-recrutamento", label: "Apresentações" },
@@ -646,6 +645,7 @@ export default function Page() {
   const latest = conversionByMonth[conversionByMonth.length - 1];
   const conversionRate = Math.round((latest.vendas / latest.leads) * 1000) / 10;
   const title = titles[active];
+  const isRecruitmentDashboard = active === "dashboard-recrutamento";
   const whatsappTodayDateKey = getLocalDateKey();
   const whatsappDailyLimit = getWhatsAppDailyLimit(recruitmentSettingsState);
   const whatsappSendsToday = contactHistoryRows.filter((item) => isWhatsAppHistoryForDate(item, whatsappTodayDateKey)).length;
@@ -1929,15 +1929,104 @@ export default function Page() {
   }
 
   function RecruitmentDashboard() {
-    const countFunnelStatus = (status: RecruitmentFunnelStatus) =>
-      importRows.filter((candidate) => getCandidateFunnelStatus(candidate) === status).length;
-    const todayKey = getLocalDateKey();
-    const whatsappSentToday = contactHistoryRows.filter((item) => isWhatsAppHistoryForDate(item, todayKey)).length;
-    const presentationsToday = presentationRows.filter((presentation) => presentation.data === todayKey).length;
-    const followUpToday = importRows.filter((candidate) =>
-      ["WhatsApp enviado", "Respondeu", "Confirmou interesse", "Não compareceu"].includes(getCandidateFunnelStatus(candidate))
-    );
-    const whatsappDailyLimit = getWhatsAppDailyLimit(recruitmentSettingsState);
+    const today = new Date();
+    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    const previousMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const previousMonthKey = `${previousMonthDate.getFullYear()}-${String(previousMonthDate.getMonth() + 1).padStart(2, "0")}`;
+    const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "short" });
+    const currentMonthLabel = monthFormatter.format(today).replace(".", "");
+    const previousMonthLabel = monthFormatter.format(previousMonthDate).replace(".", "");
+    const monthlyHistory = (monthKey: string) => contactHistoryRows.filter((item) => getHistoryDateKey(item).startsWith(monthKey));
+    const monthlyPresentations = (monthKey: string) => presentationRows.filter((presentation) => presentation.data.startsWith(monthKey));
+    const currentHistory = monthlyHistory(currentMonthKey);
+    const previousHistory = monthlyHistory(previousMonthKey);
+    const countMonthlyWhatsApp = (rows: ContactHistoryItem[]) =>
+      rows.filter((item) => item.status === "mensagem_enviada" && item.origem === "WhatsApp").length;
+    const countMonthlyFunnel = (rows: ContactHistoryItem[], status: RecruitmentFunnelStatus) =>
+      rows.filter((item) => item.status === "alteracao_funil" && item.funilStatus === status).length;
+    const countMonthlyAttendance = (monthKey: string, rows: ContactHistoryItem[]) => {
+      const historyAttendance = countMonthlyFunnel(rows, "Compareceu");
+      const presentationAttendance = monthlyPresentations(monthKey).reduce(
+        (total, presentation) => total + presentation.candidates.filter((candidate) => candidate.statusParticipacao === "compareceu").length,
+        0
+      );
+
+      return Math.max(historyAttendance, presentationAttendance);
+    };
+    const currentMetrics = {
+      whatsapp: countMonthlyWhatsApp(currentHistory),
+      responses: countMonthlyFunnel(currentHistory, "Respondeu"),
+      interest: countMonthlyFunnel(currentHistory, "Confirmou interesse"),
+      attended: countMonthlyAttendance(currentMonthKey, currentHistory)
+    };
+    const previousMetrics = {
+      whatsapp: countMonthlyWhatsApp(previousHistory),
+      responses: countMonthlyFunnel(previousHistory, "Respondeu"),
+      interest: countMonthlyFunnel(previousHistory, "Confirmou interesse"),
+      attended: countMonthlyAttendance(previousMonthKey, previousHistory)
+    };
+    const metricVariation = (current: number, previous: number) => {
+      if (!previous && !current) return 0;
+      if (!previous) return 100;
+      return Math.round(((current - previous) / previous) * 100);
+    };
+    const rate = (value: number, base: number) => (!base ? 0 : Math.round((value / base) * 100));
+    const weekOfMonth = (dateKey: string) => {
+      const day = Number(dateKey.slice(8, 10));
+      return Math.min(5, Math.max(1, Math.ceil(day / 7)));
+    };
+    const weeklyEvolution = Array.from({ length: 5 }, (_, index) => {
+      const week = index + 1;
+      const weekHistory = currentHistory.filter((item) => weekOfMonth(getHistoryDateKey(item)) === week);
+      const weekPresentations = presentationRows.filter((presentation) => presentation.data.startsWith(currentMonthKey) && weekOfMonth(presentation.data) === week);
+
+      return {
+        semana: `S${week}`,
+        whatsapp: countMonthlyWhatsApp(weekHistory),
+        respostas: countMonthlyFunnel(weekHistory, "Respondeu"),
+        interesse: countMonthlyFunnel(weekHistory, "Confirmou interesse"),
+        comparecimento: Math.max(
+          countMonthlyFunnel(weekHistory, "Compareceu"),
+          weekPresentations.reduce(
+            (total, presentation) => total + presentation.candidates.filter((candidate) => candidate.statusParticipacao === "compareceu").length,
+            0
+          )
+        )
+      };
+    });
+    const monthComparison = [
+      { metric: "WhatsApps", atual: currentMetrics.whatsapp, anterior: previousMetrics.whatsapp },
+      { metric: "Respostas", atual: currentMetrics.responses, anterior: previousMetrics.responses },
+      { metric: "Interesse", atual: currentMetrics.interest, anterior: previousMetrics.interest },
+      { metric: "Compareceram", atual: currentMetrics.attended, anterior: previousMetrics.attended }
+    ];
+    const currentRates = {
+      response: rate(currentMetrics.responses, currentMetrics.whatsapp),
+      interest: rate(currentMetrics.interest, currentMetrics.whatsapp),
+      attendance: rate(currentMetrics.attended, currentMetrics.interest)
+    };
+    const previousRates = {
+      response: rate(previousMetrics.responses, previousMetrics.whatsapp),
+      interest: rate(previousMetrics.interest, previousMetrics.whatsapp),
+      attendance: rate(previousMetrics.attended, previousMetrics.interest)
+    };
+    const summaryCards = [
+      { label: "WhatsApps enviados", value: currentMetrics.whatsapp, previous: previousMetrics.whatsapp },
+      { label: "Responderam", value: currentMetrics.responses, previous: previousMetrics.responses },
+      { label: "Confirmaram interesse", value: currentMetrics.interest, previous: previousMetrics.interest },
+      { label: "Compareceram", value: currentMetrics.attended, previous: previousMetrics.attended }
+    ];
+    const performanceInsights = [
+      metricVariation(currentMetrics.responses, previousMetrics.responses) >= 0
+        ? "O volume de respostas está estável ou acima do mês anterior."
+        : "O volume de respostas caiu em relação ao mês anterior.",
+      currentRates.attendance >= previousRates.attendance
+        ? "A taxa de comparecimento está acompanhando ou superando o mês anterior."
+        : "A taxa de comparecimento caiu e merece atenção.",
+      currentMetrics.interest > previousMetrics.interest && currentMetrics.attended <= previousMetrics.attended
+        ? "O interesse aumentou, mas o comparecimento ainda não acompanhou."
+        : "O funil mantém leitura consistente entre interesse e presença."
+    ];
 
     return (
       <>
@@ -1951,28 +2040,112 @@ export default function Page() {
             {isRecruitmentRefreshing ? "Atualizando..." : "Atualizar dados"}
           </button>
         </div>
-        <div className="grid gap-5 md:grid-cols-3">
-          <Metric label="Total de candidatos" value={String(importRows.length)} icon={Users} detail="Base carregada" />
-          <Metric label="WhatsApp enviados" value={String(countFunnelStatus("WhatsApp enviado"))} icon={BadgeCheck} detail="Primeiro contato feito" />
-          <Metric label="Confirmaram interesse" value={String(countFunnelStatus("Confirmou interesse"))} icon={CheckCircle2} detail="Avançar acompanhamento" />
-        </div>
         <Card>
-          <SectionTitle icon={Activity} title="Resumo operacional" />
-          <div className="grid gap-4 p-5 md:grid-cols-3">
-            <div className="rounded-lg border border-line bg-mist/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-normal text-steel">Para follow-up hoje</p>
-              <p className="mt-2 text-2xl font-semibold text-ink">{followUpToday.length}</p>
-            </div>
-            <div className="rounded-lg border border-line bg-mist/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-normal text-steel">Apresentações de hoje</p>
-              <p className="mt-2 text-2xl font-semibold text-ink">{presentationsToday}</p>
-            </div>
-            <div className="rounded-lg border border-line bg-mist/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-normal text-steel">Limite WhatsApp usado hoje</p>
-              <p className="mt-2 text-2xl font-semibold text-ink">{whatsappSentToday} / {whatsappDailyLimit}</p>
-            </div>
+          <SectionTitle icon={TrendingUp} title={`Resumo do mês - ${currentMonthLabel}`} />
+          <div className="grid gap-3 p-5 md:grid-cols-4">
+            {summaryCards.map((metric) => {
+              const variation = metricVariation(metric.value, metric.previous);
+              const isPositive = variation >= 0;
+
+              return (
+                <div key={metric.label} className="rounded-lg border border-line bg-mist/50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-normal text-steel">{metric.label}</p>
+                  <div className="mt-2 flex items-end justify-between gap-3">
+                    <p className="text-2xl font-semibold text-ink">{metric.value}</p>
+                    <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isPositive ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
+                      {isPositive ? "↑" : "↓"} {variation > 0 ? "+" : ""}{variation}% vs mês anterior
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
+
+        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <Card>
+            <SectionTitle icon={LineChartIcon} title="Evolução semanal do mês" />
+            <div className="h-80 p-5">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={weeklyEvolution}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+                  <XAxis dataKey="semana" stroke={chartColors.steel} />
+                  <YAxis allowDecimals={false} stroke={chartColors.steel} />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="whatsapp" name="WhatsApps" stroke={chartColors.navy} strokeWidth={2.5} />
+                  <Line type="monotone" dataKey="respostas" name="Respostas" stroke={chartColors.ocean} strokeWidth={2.5} />
+                  <Line type="monotone" dataKey="interesse" name="Interesse" stroke={chartColors.gold} strokeWidth={2.5} />
+                  <Line type="monotone" dataKey="comparecimento" name="Comparecimento" stroke={chartColors.green} strokeWidth={2.5} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          <Card>
+            <SectionTitle icon={BarChart3} title={`${currentMonthLabel} x ${previousMonthLabel}`} />
+            <div className="h-80 p-5">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthComparison}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+                  <XAxis dataKey="metric" stroke={chartColors.steel} />
+                  <YAxis allowDecimals={false} stroke={chartColors.steel} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="anterior" name="Mês anterior" fill={chartColors.sky} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="atual" name="Mês atual" fill={chartColors.navy} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+          <Card>
+            <SectionTitle icon={Gauge} title="Taxas principais" />
+            <div className="space-y-3 p-5">
+              {[
+                { label: "Taxa de resposta", current: currentRates.response, previous: previousRates.response },
+                { label: "Taxa de interesse", current: currentRates.interest, previous: previousRates.interest },
+                { label: "Taxa de comparecimento", current: currentRates.attendance, previous: previousRates.attendance }
+              ].map((item) => {
+                const delta = item.current - item.previous;
+
+                return (
+                  <div key={item.label} className="rounded-lg border border-line p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold text-ink">{item.label}</p>
+                      <span className={`text-sm font-semibold ${delta >= 0 ? "text-success" : "text-danger"}`}>
+                        {delta >= 0 ? "+" : ""}{delta} p.p.
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-end justify-between gap-3">
+                      <p className="text-2xl font-semibold text-navy">{item.current}%</p>
+                      <p className="text-xs text-steel">Mês anterior: {item.previous}%</p>
+                    </div>
+                    <div className="mt-3 h-2 rounded-full bg-mist">
+                      <div className="h-2 rounded-full bg-navy" style={{ width: `${Math.min(100, item.current)}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          <Card>
+            <SectionTitle icon={Activity} title="Resumo do desempenho" />
+            <div className="space-y-3 p-5">
+              {performanceInsights.map((insight) => (
+                <div key={insight} className="rounded-lg border border-line bg-mist/50 p-4 text-sm leading-6 text-ink">
+                  {insight}
+                </div>
+              ))}
+              <p className="text-xs text-steel">
+                Leitura baseada nos registros de histórico, funil e apresentações já salvos no CRM.
+              </p>
+            </div>
+          </Card>
+        </div>
       </>
     );
   }
@@ -2055,14 +2228,14 @@ export default function Page() {
             </div>
           }
         />
-        <div className="border-t border-line px-5 py-3 text-sm text-steel">
-          <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 font-semibold text-ink">
+        <div className="border-t border-line px-4 py-2 text-sm text-steel">
+          <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-1.5 font-semibold text-ink">
             Envio real ativo: ao clicar em Enviar WhatsApp, uma mensagem será enviada pela API da Meta.
           </p>
-          <p className="mt-2 text-xs text-steel">
+          <p className="mt-1.5 text-xs text-steel">
             Use Simulação interna apenas para teste local do fluxo, sem disparo real de WhatsApp.
           </p>
-          <p className="mt-2 font-semibold text-navy">Envios WhatsApp hoje: {whatsappSendsToday} / {whatsappDailyLimit}</p>
+          <p className="mt-1.5 font-semibold text-navy">Envios WhatsApp hoje: {whatsappSendsToday} / {whatsappDailyLimit}</p>
           {whatsappSendFeedback ? (
             <p className={`mt-2 font-semibold ${whatsappSendFeedback.type === "success" ? "text-success" : "text-danger"}`}>
               {whatsappSendFeedback.message}
@@ -2070,37 +2243,37 @@ export default function Page() {
           ) : null}
         </div>
         <div className="overflow-x-auto thin-scrollbar">
-          <table className="w-full min-w-[1240px] text-left text-sm">
+          <table className="w-full min-w-[1240px] table-fixed text-left text-xs">
             <thead className="bg-mist text-xs uppercase tracking-normal text-steel">
               <tr>
-                <th className="px-5 py-3">#</th>
-                <th className="px-5 py-3">Candidato</th>
-                <th className="px-5 py-3">Telefone</th>
-                <th className="px-5 py-3">Cargo</th>
-                <th className="px-5 py-3">Data da apresentacao</th>
-                <th className="px-5 py-3">Horario</th>
-                <th className="px-5 py-3">Status envio</th>
-                <th className="px-5 py-3">Mensagem pronta</th>
-                <th className="px-5 py-3">WhatsApp</th>
+                <th className="w-12 px-3 py-2">#</th>
+                <th className="w-44 px-3 py-2">Candidato</th>
+                <th className="w-36 px-3 py-2">Telefone</th>
+                <th className="w-32 px-3 py-2">Cargo</th>
+                <th className="w-44 px-3 py-2">Data da apresentacao</th>
+                <th className="w-24 px-3 py-2">Horario</th>
+                <th className="w-36 px-3 py-2">Status envio</th>
+                <th className="w-[360px] px-3 py-2">Mensagem pronta</th>
+                <th className="w-40 px-3 py-2">WhatsApp</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
               {generatedQueue.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-5 py-4 font-semibold text-navy">{item.id}</td>
-                  <td className="px-5 py-4 font-semibold text-ink">{item.nome}</td>
-                  <td className="px-5 py-4">{item.telefone}</td>
-                  <td className="px-5 py-4">{item.cargo}</td>
-                  <td className="px-5 py-4">{item.apresentacao}</td>
-                  <td className="px-5 py-4">{item.horario_apresentacao}</td>
-                  <td className="px-5 py-4"><span className="rounded-md bg-mist px-2 py-1 text-xs font-semibold text-navy">{item.status_envio}</span></td>
-                  <td className="px-5 py-4 text-steel">{item.mensagem}</td>
-                  <td className="px-5 py-4">
+                <tr key={item.id} className="h-11">
+                  <td className="px-3 py-2 font-semibold text-navy">{item.id}</td>
+                  <td className="truncate px-3 py-2 font-semibold text-ink" title={item.nome}>{item.nome}</td>
+                  <td className="px-3 py-2 font-medium text-ink">{item.telefone}</td>
+                  <td className="truncate px-3 py-2 text-steel" title={item.cargo}>{item.cargo || "-"}</td>
+                  <td className="px-3 py-2">{item.apresentacao}</td>
+                  <td className="px-3 py-2 font-medium text-ink">{item.horario_apresentacao}</td>
+                  <td className="px-3 py-2"><span className="rounded bg-mist px-2 py-0.5 text-[11px] font-semibold text-navy">{item.status_envio}</span></td>
+                  <td className="truncate px-3 py-2 text-steel" title={item.mensagem}>{item.mensagem}</td>
+                  <td className="px-3 py-2">
                     <button
                       type="button"
                       onClick={() => handleSendQueueItemWhatsApp(item)}
                       disabled={item.status_envio !== "pendente_envio" || sendingQueueItemId !== null || !isValidQueuePhone(item.telefone)}
-                      className="h-9 rounded-md bg-navy px-3 text-xs font-semibold text-white transition hover:bg-ocean disabled:cursor-not-allowed disabled:opacity-60"
+                      className="h-8 rounded-md bg-navy px-3 text-[11px] font-semibold text-white transition hover:bg-ocean disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {sendingQueueItemId === item.id ? "Enviando..." : item.status_envio === "mensagem_enviada" ? "Enviado" : "Enviar WhatsApp"}
                     </button>
@@ -2486,29 +2659,33 @@ export default function Page() {
               <div className="flex flex-wrap items-center gap-2">
                 <div className="flex h-10 min-w-0 items-center gap-2 rounded-md border border-line bg-white px-3">
                   <Search size={16} className="text-steel" />
-                  <input className="w-48 bg-transparent text-sm outline-none" placeholder="Buscar lead, pasta, corretor" />
+                  <input className="w-48 bg-transparent text-sm outline-none" placeholder={isRecruitmentDashboard ? "Buscar candidato" : "Buscar lead, pasta, corretor"} />
                 </div>
-                <button className="grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-navy" title="Filtros avancados">
-                  <Filter size={18} />
-                </button>
-                <button
-                  onClick={() =>
-                    exportCsv(
-                      active.startsWith("dashboard-corretores") || brokerNav.some((item) => item.key === active) ? "corretores.csv" : "clientes.csv",
-                      active.startsWith("dashboard-corretores") || brokerNav.some((item) => item.key === active)
-                        ? brokerRows.map((broker) => ({ nome: broker.nome, ipc: broker.analise.ipc, venda30: broker.analise.venda30, risco: broker.analise.riscoBaixaPerformance }))
-                        : clientRows.map((client) => ({ nome: client.nome_cliente, cpf_mascarado: client.cpf, ipc: client.analise.ipc, compra: client.analise.chanceCompra, nivel: client.analise.nivelLead }))
-                    )
-                  }
-                  className="flex h-10 items-center gap-2 rounded-md bg-navy px-3 text-sm font-medium text-white shadow-lg shadow-navy/10 transition hover:bg-ocean"
-                >
-                  <Download size={17} />
-                  Excel
-                </button>
-                <button onClick={() => window.print()} className="flex h-10 items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-medium text-navy transition hover:border-gold hover:text-ink">
-                  <FileText size={17} />
-                  PDF
-                </button>
+                {!isRecruitmentDashboard ? (
+                  <>
+                    <button className="grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-navy" title="Filtros avancados">
+                      <Filter size={18} />
+                    </button>
+                    <button
+                      onClick={() =>
+                        exportCsv(
+                          active.startsWith("dashboard-corretores") || brokerNav.some((item) => item.key === active) ? "corretores.csv" : "clientes.csv",
+                          active.startsWith("dashboard-corretores") || brokerNav.some((item) => item.key === active)
+                            ? brokerRows.map((broker) => ({ nome: broker.nome, ipc: broker.analise.ipc, venda30: broker.analise.venda30, risco: broker.analise.riscoBaixaPerformance }))
+                            : clientRows.map((client) => ({ nome: client.nome_cliente, cpf_mascarado: client.cpf, ipc: client.analise.ipc, compra: client.analise.chanceCompra, nivel: client.analise.nivelLead }))
+                        )
+                      }
+                      className="flex h-10 items-center gap-2 rounded-md bg-navy px-3 text-sm font-medium text-white shadow-lg shadow-navy/10 transition hover:bg-ocean"
+                    >
+                      <Download size={17} />
+                      Excel
+                    </button>
+                    <button onClick={() => window.print()} className="flex h-10 items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-medium text-navy transition hover:border-gold hover:text-ink">
+                      <FileText size={17} />
+                      PDF
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
           </header>
