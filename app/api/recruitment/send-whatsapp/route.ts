@@ -18,14 +18,14 @@ export async function POST(request: NextRequest) {
   try {
     const payload = (await request.json()) as SendWhatsAppPayload;
     const telefone = asText(payload.telefone);
-    const mensagem = asText(payload.mensagem);
+    const mensagem = asText(payload.mensagem) || "Mensagem enviada pelo CRM Home Life.";
     const nome = asText(payload.nome) || "candidato";
     const templateName = asText(payload.templateName);
     const dataApresentacao = asText(payload.dataApresentacao);
     const horarioApresentacao = asText(payload.horarioApresentacao);
 
-    if (!telefone || !mensagem) {
-      return NextResponse.json({ success: false, error: "Telefone e mensagem sao obrigatorios" }, { status: 400 });
+    if (!telefone) {
+      return NextResponse.json({ success: false, error: "Telefone e obrigatorio" }, { status: 400 });
     }
 
     const result = await sendWhatsAppMessage({

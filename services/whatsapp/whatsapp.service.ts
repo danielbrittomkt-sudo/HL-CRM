@@ -75,7 +75,7 @@ export const whatsappTemplates: Record<WhatsAppTemplateName, WhatsAppTemplateCon
     label: "Segunda tentativa",
     funnelStage: "Sem resposta",
     parameterCount: 1,
-    status: "em_analise",
+    status: "ativo",
     requiredFields: ["nome"]
   },
   h_crm_convite_apresentacao: {
@@ -83,7 +83,7 @@ export const whatsappTemplates: Record<WhatsAppTemplateName, WhatsAppTemplateCon
     label: "Convite para apresentacao",
     funnelStage: "Confirmou interesse",
     parameterCount: 3,
-    status: "em_analise",
+    status: "ativo",
     requiredFields: ["nome", "dataApresentacao", "horarioApresentacao"]
   },
   h_crm_lembrete_apresentacao: {
@@ -91,7 +91,7 @@ export const whatsappTemplates: Record<WhatsAppTemplateName, WhatsAppTemplateCon
     label: "Lembrete da apresentacao",
     funnelStage: "Apresentacao agendada",
     parameterCount: 2,
-    status: "em_analise",
+    status: "ativo",
     requiredFields: ["nome", "horarioApresentacao"]
   },
   h_crm_confirmacao_presenca: {
@@ -99,7 +99,7 @@ export const whatsappTemplates: Record<WhatsAppTemplateName, WhatsAppTemplateCon
     label: "Confirmacao de presenca",
     funnelStage: "Apresentacao agendada",
     parameterCount: 3,
-    status: "em_analise",
+    status: "ativo",
     requiredFields: ["nome", "dataApresentacao", "horarioApresentacao"]
   },
   h_crm_pos_apresentacao: {
@@ -107,7 +107,7 @@ export const whatsappTemplates: Record<WhatsAppTemplateName, WhatsAppTemplateCon
     label: "Pos-apresentacao",
     funnelStage: "Compareceu",
     parameterCount: 1,
-    status: "em_analise",
+    status: "ativo",
     requiredFields: ["nome"]
   },
   h_crm_sem_resposta: {
@@ -115,7 +115,7 @@ export const whatsappTemplates: Record<WhatsAppTemplateName, WhatsAppTemplateCon
     label: "Sem resposta",
     funnelStage: "Sem resposta",
     parameterCount: 1,
-    status: "em_analise",
+    status: "ativo",
     requiredFields: ["nome"]
   }
 };
