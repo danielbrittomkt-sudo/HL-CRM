@@ -1932,7 +1932,6 @@ export default function Page() {
     const countFunnelStatus = (status: RecruitmentFunnelStatus) =>
       importRows.filter((candidate) => getCandidateFunnelStatus(candidate) === status).length;
     const todayKey = getLocalDateKey();
-    const futurePresentations = presentationRows.filter((presentation) => presentation.status === "agendada" && presentation.data >= todayKey).length;
     const whatsappSentToday = contactHistoryRows.filter((item) => isWhatsAppHistoryForDate(item, todayKey)).length;
     const presentationsToday = presentationRows.filter((presentation) => presentation.data === todayKey).length;
     const followUpToday = importRows.filter((candidate) =>
@@ -1952,13 +1951,10 @@ export default function Page() {
             {isRecruitmentRefreshing ? "Atualizando..." : "Atualizar dados"}
           </button>
         </div>
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-5 md:grid-cols-3">
           <Metric label="Total de candidatos" value={String(importRows.length)} icon={Users} detail="Base carregada" />
           <Metric label="WhatsApp enviados" value={String(countFunnelStatus("WhatsApp enviado"))} icon={BadgeCheck} detail="Primeiro contato feito" />
           <Metric label="Confirmaram interesse" value={String(countFunnelStatus("Confirmou interesse"))} icon={CheckCircle2} detail="Avançar acompanhamento" />
-          <Metric label="Apresentações futuras" value={String(futurePresentations)} icon={Target} detail="Turmas agendadas" />
-          <Metric label="Compareceram" value={String(countFunnelStatus("Compareceu"))} icon={Gauge} detail="Participaram da apresentação" />
-          <Metric label="Telefone inválido" value={String(countFunnelStatus("Telefone inválido"))} icon={FileText} detail="Corrigir contato" />
         </div>
         <Card>
           <SectionTitle icon={Activity} title="Resumo operacional" />
