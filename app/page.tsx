@@ -1640,6 +1640,9 @@ export default function Page() {
 
   function OperationDay() {
     const todayKey = getLocalDateKey();
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayKey = getLocalDateKey(yesterdayDate);
     const candidateRows = importRows.length ? importRows : candidateList;
     const candidateByPhone = new Map(candidateRows.map((candidate) => [normalizeQueuePhone(candidate.telefone), candidate]));
     const pendingQueueToday = generatedQueue.filter((item) => item.status_envio === "pendente_envio");
@@ -1652,18 +1655,113 @@ export default function Page() {
     const followUpCandidates = candidateRows.filter((candidate) =>
       ["WhatsApp enviado", "Respondeu", "Confirmou interesse", "Não compareceu"].includes(getCandidateFunnelStatus(candidate))
     );
+    const yesterdayHistory = contactHistoryRows.filter((item) => getHistoryDateKey(item) === yesterdayKey);
+    const yesterdayPresentations = presentationRows.filter((presentation) => presentation.data === yesterdayKey);
+    const countDailyFunnel = (dateKey: string, status: RecruitmentFunnelStatus) =>
+      contactHistoryRows.filter((item) => getHistoryDateKey(item) === dateKey && item.status === "alteracao_funil" && item.funilStatus === status).length;
+    const countDailyAttendance = (dateKey: string, historyRows: ContactHistoryItem[], presentations: RecruitmentPresentation[]) => {
+      const historyAttendance = historyRows.filter((item) => item.status === "alteracao_funil" && item.funilStatus === "Compareceu").length;
+      const presentationAttendance = presentations
+        .filter((presentation) => presentation.data === dateKey)
+        .reduce((total, presentation) => total + presentation.candidates.filter((candidate) => candidate.statusParticipacao === "compareceu").length, 0);
+
+      return Math.max(historyAttendance, presentationAttendance);
+    };
+    const yesterdayMetrics = {
+      whatsapp: yesterdayHistory.filter((item) => item.status === "mensagem_enviada" && item.origem === "WhatsApp").length,
+      interest: countDailyFunnel(yesterdayKey, "Confirmou interesse"),
+      scheduled: yesterdayPresentations.reduce((total, presentation) => total + presentation.candidates.length, 0),
+      attended: countDailyAttendance(yesterdayKey, yesterdayHistory, yesterdayPresentations)
+    };
+    const todayMetrics = {
+      pending: pendingQueueToday.length,
+      whatsapp: whatsappSentToday.length,
+      presentations: presentationsToday.length,
+      scheduled: scheduledTodayCandidates.length,
+      interest: confirmedInterestCandidates.length,
+      followUp: followUpCandidates.length,
+      attended: countDailyAttendance(todayKey, contactHistoryRows.filter((item) => getHistoryDateKey(item) === todayKey), presentationsToday)
+    };
+    const dailyDelta = (current: number, previous: number) => current - previous;
+    const dailySummary = [
+      { label: "Para contatar", value: todayMetrics.pending, previous: 0 },
+      { label: "WhatsApps enviados", value: todayMetrics.whatsapp, previous: yesterdayMetrics.whatsapp },
+      { label: "Confirmaram interesse", value: todayMetrics.interest, previous: yesterdayMetrics.interest },
+      { label: "Compareceram", value: todayMetrics.attended, previous: yesterdayMetrics.attended }
+    ];
+    const dayComparison = [
+      { metric: "WhatsApps", hoje: todayMetrics.whatsapp, ontem: yesterdayMetrics.whatsapp },
+      { metric: "Interesse", hoje: todayMetrics.interest, ontem: yesterdayMetrics.interest },
+      { metric: "Agendados", hoje: todayMetrics.scheduled, ontem: yesterdayMetrics.scheduled },
+      { metric: "Compareceram", hoje: todayMetrics.attended, ontem: yesterdayMetrics.attended }
+    ];
+    const dailyPriorities = [
+      { item: "Contatar", total: todayMetrics.pending },
+      { item: "Follow-up", total: todayMetrics.followUp },
+      { item: "Apresentações", total: todayMetrics.presentations },
+      { item: "Agendados", total: todayMetrics.scheduled }
+    ];
 
     return (
       <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Metric label="Para contatar hoje" value={String(pendingQueueToday.length)} icon={Users} detail="Fila pendente" />
-          <Metric label="WhatsApps enviados hoje" value={String(whatsappSentToday.length)} icon={BadgeCheck} detail="Historico do dia" />
-          <Metric label="Apresentações de hoje" value={String(presentationsToday.length)} icon={Target} detail="Turmas do dia" />
-          <Metric label="Agendados hoje" value={String(scheduledTodayCandidates.length)} icon={Activity} detail="Candidatos em turmas" />
-          <Metric label="Confirmaram interesse" value={String(confirmedInterestCandidates.length)} icon={CheckCircle2} detail="Prontos para agendar" />
-          <Metric label="Nao responderam" value={String(notRespondedCandidates.length)} icon={Filter} detail="Follow-up leve" />
-          <Metric label="Nao compareceram" value={String(missedCandidates.length)} icon={FileText} detail="Reativar ou encerrar" />
-          <Metric label="Para follow-up" value={String(followUpCandidates.length)} icon={Gauge} detail="Ações manuais" />
+        <Card>
+          <SectionTitle icon={Activity} title="Resumo do dia" />
+          <div className="grid gap-3 p-5 md:grid-cols-4">
+            {dailySummary.map((metric) => {
+              const delta = dailyDelta(metric.value, metric.previous);
+              const isPositive = delta >= 0;
+
+              return (
+                <div key={metric.label} className="rounded-lg border border-line bg-mist/50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-normal text-steel">{metric.label}</p>
+                  <div className="mt-2 flex items-end justify-between gap-3">
+                    <p className="text-2xl font-semibold text-ink">{metric.value}</p>
+                    {metric.label === "Para contatar" ? (
+                      <span className="rounded-md bg-navy/10 px-2 py-1 text-xs font-semibold text-navy">fila atual</span>
+                    ) : (
+                      <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isPositive ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
+                        {isPositive ? "↑" : "↓"} {delta >= 0 ? "+" : ""}{delta} vs ontem
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        <div className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
+          <Card>
+            <SectionTitle icon={BarChart3} title="Hoje x ontem" />
+            <div className="h-72 p-5">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dayComparison}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+                  <XAxis dataKey="metric" stroke={chartColors.steel} />
+                  <YAxis allowDecimals={false} stroke={chartColors.steel} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="ontem" name="Ontem" fill={chartColors.sky} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="hoje" name="Hoje" fill={chartColors.navy} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          <Card>
+            <SectionTitle icon={Gauge} title="Prioridades operacionais" />
+            <div className="h-72 p-5">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dailyPriorities} layout="vertical" margin={{ left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+                  <XAxis type="number" allowDecimals={false} stroke={chartColors.steel} />
+                  <YAxis type="category" dataKey="item" stroke={chartColors.steel} width={92} />
+                  <Tooltip />
+                  <Bar dataKey="total" name="Total" fill={chartColors.gold} radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
         </div>
 
         <div className="grid gap-6 xl:grid-cols-2">
@@ -2460,28 +2558,49 @@ export default function Page() {
             </select>
           </label>
         </div>
-        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
-          {filteredHistoryRows.length ? filteredHistoryRows.map((item, index) => (
-            <div key={`${item.nome}-${item.status}-${index}`} className="rounded-lg border border-line p-4">
-              <p className="font-semibold text-ink">{item.nome}</p>
-              <p className="mt-1 text-sm text-steel">{item.telefone}</p>
-              <p className="mt-1 text-sm text-steel">{item.fonte}</p>
-              <span className="mt-3 inline-flex rounded-md bg-mist px-2 py-1 text-xs font-semibold text-navy">{item.status}</span>
-              <p className="mt-3 text-xs text-steel">Envio: {item.data_envio}</p>
-              <p className="mt-1 text-xs text-steel">Apresentacao: {item.data_apresentacao}</p>
-              {item.origem ? <p className="mt-1 text-xs text-steel">Origem: {item.origem}</p> : null}
-              {item.funilStatus ? <p className="mt-1 text-xs font-semibold text-navy">Funil: {item.funilStatus}</p> : null}
-              {item.presentationTitle ? <p className="mt-1 text-xs text-steel">Apresentação: {item.presentationTitle}</p> : null}
-              {item.participationStatus ? <p className="mt-1 text-xs text-steel">Participacao: {getParticipationLabel(item.participationStatus)}</p> : null}
-              {item.templateLabel ? <p className="mt-1 text-xs text-steel">Template: {item.templateLabel}</p> : null}
-              {item.messageId ? <p className="mt-1 break-all text-xs text-steel">MessageId: {item.messageId}</p> : null}
-              <p className="mt-3 text-xs leading-5 text-steel">{item.mensagem}</p>
-            </div>
-          )) : (
-            <div className="rounded-lg border border-dashed border-line p-5 text-sm text-steel md:col-span-2 xl:col-span-4">
-              Nenhum histórico encontrado para os filtros selecionados.
-            </div>
-          )}
+        <div className="overflow-x-auto thin-scrollbar">
+          <table className="w-full min-w-[1320px] table-fixed text-left text-xs">
+            <thead className="bg-mist text-xs uppercase tracking-normal text-steel">
+              <tr>
+                <th className="w-48 px-3 py-2">Candidato</th>
+                <th className="w-36 px-3 py-2">Telefone</th>
+                <th className="w-28 px-3 py-2">Fonte</th>
+                <th className="w-36 px-3 py-2">Status</th>
+                <th className="w-32 px-3 py-2">Envio</th>
+                <th className="w-36 px-3 py-2">Origem</th>
+                <th className="w-44 px-3 py-2">Funil</th>
+                <th className="w-52 px-3 py-2">Apresentação</th>
+                <th className="w-[360px] px-3 py-2">Mensagem</th>
+                <th className="w-52 px-3 py-2">MessageId</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {filteredHistoryRows.length ? filteredHistoryRows.map((item, index) => (
+                <tr key={`${item.nome}-${item.status}-${index}`} className="h-11">
+                  <td className="truncate px-3 py-2 font-semibold text-ink" title={item.nome}>{item.nome}</td>
+                  <td className="px-3 py-2 font-medium text-ink">{item.telefone}</td>
+                  <td className="truncate px-3 py-2 text-steel" title={item.fonte}>{item.fonte || "-"}</td>
+                  <td className="px-3 py-2">
+                    <span className="rounded bg-mist px-2 py-0.5 text-[11px] font-semibold text-navy">{item.status}</span>
+                  </td>
+                  <td className="truncate px-3 py-2 text-steel" title={item.data_envio}>{item.data_envio || "-"}</td>
+                  <td className="truncate px-3 py-2 text-steel" title={item.origem || "-"}>{item.origem || "-"}</td>
+                  <td className="truncate px-3 py-2 font-medium text-navy" title={item.funilStatus || "-"}>{item.funilStatus || "-"}</td>
+                  <td className="truncate px-3 py-2 text-steel" title={item.presentationTitle || item.data_apresentacao || "-"}>
+                    {item.presentationTitle || item.data_apresentacao || "-"}
+                  </td>
+                  <td className="truncate px-3 py-2 text-steel" title={item.mensagem}>{item.mensagem}</td>
+                  <td className="truncate px-3 py-2 text-steel" title={item.messageId || "-"}>{item.messageId || "-"}</td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={10} className="px-5 py-6 text-center text-sm text-steel">
+                    Nenhum histórico encontrado para os filtros selecionados.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </Card>
     );
